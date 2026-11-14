@@ -20,6 +20,7 @@
 
 #include "menus/agentselectorrenderer.h"
 
+#include "fs-engine/appcontext.h"
 #include "fs-engine/system/system.h"
 #include "fs-engine/gfx/animationmanager.h"
 #include "fs-kernel/model/ped.h"
@@ -31,6 +32,8 @@ const int AgentSelectorRenderer::kIpaBarLeft24 = 68;
 const int AgentSelectorRenderer::kIpaBarTop12  = 48;
 const int AgentSelectorRenderer::kIpaBarTop34  = 148;
 const int AgentSelectorRenderer::kIpaYOffset = 14;
+//! Hardware mode : background of the selector of a selected agent
+static const fs_eng::FSColor kSelectedColour = {215, 70, 15, 255};
 
 /*!
  *
@@ -183,6 +186,14 @@ void AgentSelectorRenderer::drawSelectorForAgent(size_t agentSlot,
 
     // Draw the background of selector
     g_SpriteMgr.drawSprite(isSelected ? spriteSelected : springUnselected, {topX, topY});
+    if (isSelected && g_Ctx.isHardwareRendering()) {
+        // Hardware mode : the selected background is a solid colour, not a dithered one
+        static bool ditherMaskCreated = false;
+        if (!ditherMaskCreated) {
+            ditherMaskCreated = g_SpriteMgr.sprites().createDitherMask({1772, 1773, 1774, 1775});
+        }
+        g_SpriteMgr.sprites().drawSpriteDitherFill(spriteSelected, topX, topY, kSelectedColour);
+    }
     g_SpriteMgr.drawSprite(isSelected ? 1778 : 1754, {topX, topY + 46});
 
     if (pAgent) {

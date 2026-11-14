@@ -78,6 +78,11 @@ public:
     void setBlendMode(FSTexture::BlendMode mode) { spritesetTexture_->setBlendMode(mode); }
     //! Return the sprite at given index
     Sprite *sprite(int spriteNum);
+    //! Returns the colour index of a pixel of a sprite
+    uint8_t pixelIndex(int spriteNum, int x, int y) {
+        Sprite *pSprite = sprite(spriteNum);
+        return pixels_[(pSprite->textureLocation().y + y) * textureWidth_ + pSprite->textureLocation().x + x];
+    }
 
     //! Draw a sprite with given Id at given position on screen. Sprite can be flipped or stretched
     bool drawSprite(int spriteNum, int x, int y, bool flipped = false, bool x2 = false);
@@ -95,6 +100,13 @@ public:
     }
     //! Draws the tint mask of the sprite with the given color, on top of the sprite
     void drawSpriteTint(int spriteNum, int x, int y, bool flipped, fs_eng::FSColor color);
+    /*!
+     * Creates the mask of the dithered pixels of the given sprites : the pixels in a
+     * checkerboard of two colours. The mask can then be drawn with a solid colour.
+     */
+    bool createDitherMask(const std::vector<int> &spriteIds);
+    //! Draws the dither mask of the sprite with the given color, on top of the sprite
+    void drawSpriteDitherFill(int spriteNum, int x, int y, fs_eng::FSColor color);
 
 protected:
 
@@ -124,6 +136,8 @@ protected:
     std::unique_ptr<FSTexture> tintTexture_;
     //! Tells for each sprite if it has pixels in the tint mask
     std::vector<bool> tintedSprites_;
+    //! The dithered pixels of some sprites, in white (see createDitherMask())
+    std::unique_ptr<FSTexture> ditherTexture_;
 };
 }
 

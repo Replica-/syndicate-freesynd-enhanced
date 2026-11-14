@@ -91,6 +91,8 @@ public:
     void drawSprite(int spriteId, const Point2D &screenPos);
     //! Draws a sprite twice as big
     void drawSpriteX2(int spriteId, const Point2D &screenPos) { spritesManager_.drawSprite(spriteId, screenPos.x, screenPos.y, false, true); }
+    //! The manager of the sprites the animations are made of
+    SpriteManager &sprites() { return spritesManager_; }
     //! Draws the texture with all the sprites (development)
     void drawSpriteSheet(const Point2D &pos, int width, int height) { spritesManager_.drawTexture({0, 0}, pos, width, height); }
     /*!

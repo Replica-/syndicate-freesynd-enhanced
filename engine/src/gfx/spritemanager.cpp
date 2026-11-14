@@ -23,6 +23,7 @@
 
 #include "fs-engine/gfx/spritemanager.h"
 
+#include <algorithm>
 #include <cassert>
 #include <list>
 #include <format>
@@ -347,6 +348,75 @@ bool SpriteManager::createTintMask(const std::vector<int> &spriteIds, uint8_t co
     return tintTexture_->create8bitsSurfaceFromData(mask.data(), textureWidth_, textureWidth_, kTransparent) &&
         tintTexture_->setPalette(maskPalette) &&
         tintTexture_->loadTextureFromSurface();
+}
+
+bool SpriteManager::createDitherMask(const std::vector<int> &spriteIds) {
+    const uint8_t kTransparent = 255;
+    const uint8_t kMasked = 0;
+    std::vector<uint8_t> mask(textureWidth_ * textureWidth_, kTransparent);
+
+    for (int spriteId : spriteIds) {
+        Sprite *pSprite = sprite(spriteId);
+        if (pSprite == nullptr) {
+            continue;
+        }
+        Point2D loc = pSprite->textureLocation();
+        // In a checkerboard, a pixel has no neighbour of its colour and its neighbours have
+        // the other colour. Lines drawn over it (like digits) are at least 2 pixels thick so
+        // they are kept. The edges of the sprite are kept too.
+        for (int y = loc.y + 1; y < loc.y + pSprite->height() - 1; y++) {
+            for (int x = loc.x + 1; x < loc.x + pSprite->width() - 1; x++) {
+                size_t i = y * textureWidth_ + x;
+                uint8_t pixel = pixels_[i];
+                uint8_t neighbours[4] = {pixels_[i - 1], pixels_[i + 1], pixels_[i - textureWidth_], pixels_[i + textureWidth_]};
+                if (pixel == kTransparent || std::find(neighbours, neighbours + 4, pixel) != neighbours + 4) {
+                    continue;
+                }
+                for (uint8_t other : neighbours) {
+                    if (other != kTransparent && std::count(neighbours, neighbours + 4, other) >= 3) {
+                        mask[i] = kMasked;
+                        break;
+                    }
+                }
+            }
+        }
+        // Then the pixels of the checkerboard that touch a line : they have one neighbour of
+        // their colour (in the line) and the others are dithered. Pixels of lines have at least 2.
+        for (int y = loc.y + 1; y < loc.y + pSprite->height() - 1; y++) {
+            for (int x = loc.x + 1; x < loc.x + pSprite->width() - 1; x++) {
+                size_t i = y * textureWidth_ + x;
+                if (mask[i] == kMasked || pixels_[i] == kTransparent) {
+                    continue;
+                }
+                size_t around[4] = {i - 1, i + 1, i - textureWidth_, i + textureWidth_};
+                int sameColour = 0, dithered = 0;
+                for (size_t n : around) {
+                    sameColour += pixels_[n] == pixels_[i];
+                    dithered += mask[n] == kMasked;
+                }
+                if (sameColour <= 1 && dithered >= 3) {
+                    mask[i] = kMasked;
+                }
+            }
+        }
+    }
+
+    // The mask is white so it takes the color given when drawing
+    fs_eng::Palette maskPalette {};
+    maskPalette[kMasked] = {255, 255, 255, 255};
+
+    ditherTexture_ = g_System.createTexture();
+    return ditherTexture_->create8bitsSurfaceFromData(mask.data(), textureWidth_, textureWidth_, kTransparent) &&
+        ditherTexture_->setPalette(maskPalette) &&
+        ditherTexture_->loadTextureFromSurface();
+}
+
+void SpriteManager::drawSpriteDitherFill(int spriteNum, int x, int y, fs_eng::FSColor color) {
+    Sprite *pSprite = sprite(spriteNum);
+    if (pSprite && ditherTexture_) {
+        ditherTexture_->setColorModulation(color);
+        ditherTexture_->renderExtended(pSprite->textureLocation(), {x, y}, pSprite->width(), pSprite->height(), 1, false);
+    }
 }
 
 void SpriteManager::drawSpriteTint(int spriteNum, int x, int y, bool flipped, fs_eng::FSColor color) {

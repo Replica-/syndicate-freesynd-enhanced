@@ -27,6 +27,39 @@
             "preLaunchTask": "Build Debug"
         },
         {
+            // Original behaviour, to compare with the default hardware mode
+            "name": "FreeSynd (Debug) - Software mode",
+            "type": "cppvsdbg",
+            "request": "launch",
+            "program": "${workspaceFolder}/build/ninja-msvc-x64-debug/game/freesynd.exe",
+            "args": ["-i", "dev", "-u", "dev/user", "--software"],
+            "cwd": "${workspaceFolder}",
+            "console": "internalConsole",
+            "preLaunchTask": "Build Debug"
+        },
+        {
+            // Starts mission 1 directly with the default squad : no briefing nor equipment screen
+            "name": "FreeSynd (Debug) - Play mission 1",
+            "type": "cppvsdbg",
+            "request": "launch",
+            "program": "${workspaceFolder}/build/ninja-msvc-x64-debug/game/freesynd.exe",
+            "args": ["-i", "dev", "-u", "dev/user", "-m", "1", "--play"],
+            "cwd": "${workspaceFolder}",
+            "console": "internalConsole",
+            "preLaunchTask": "Build Debug"
+        },
+        {
+            // Saves the sprites of mission 1 (death animations first) in build/sprites_mission1.png, then quits
+            "name": "Tools: Export sprite sheet",
+            "type": "cppvsdbg",
+            "request": "launch",
+            "program": "${workspaceFolder}/build/ninja-msvc-x64-debug/game/freesynd.exe",
+            "args": ["-i", "dev", "-u", "dev/user", "-n", "-m", "1", "--play", "--export-sprites", "build/sprites_mission1.png"],
+            "cwd": "${workspaceFolder}",
+            "console": "internalConsole",
+            "preLaunchTask": "Build Debug"
+        },
+        {
             "name": "FreeSynd (Debug) - Jump to mission",
             "type": "cppvsdbg",
             "request": "launch",

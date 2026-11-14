@@ -46,6 +46,11 @@ namespace fs_eng
 
     /*! Width of the screen in pixels.*/
     inline constexpr int kScreenWidth {640};
+    /*!
+     * In hardware mode, the screen is wider on a wide screen (System::screenWidth()) :
+     * this is the maximum width.
+     */
+    inline constexpr int kMaxScreenWidth {1280};
     /*! Height of the screen in pixels.*/
     inline constexpr int kScreenHeight {400};
 

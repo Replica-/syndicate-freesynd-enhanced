@@ -44,6 +44,14 @@ public:
 protected:
 
     bool handleUnMappedKey(const fs_eng::FS_Key key) override;
+    //! A click on the colour or logo picker selects the item
+    bool handleMouseDown(Point2D point, int button) override;
+    //! Draws all the colours and logos to choose from
+    void drawPicker();
+    //! Returns the index of the colour under the given point or -1
+    int colourAt(Point2D point);
+    //! Returns the index of the logo under the given point or -1
+    int logoAt(Point2D point);
 
     void createPanels();
     void showLogoPanel();

@@ -26,9 +26,14 @@
 
 #include "gameplaymenu.h"
 
+#include <algorithm>
 #include <cassert>
 
+#include "fs-engine/appcontext.h"
+#include "fs-engine/events/default_events.h"
 #include "fs-engine/gfx/animationmanager.h"
+#include "fs-engine/gfx/logomanager.h"
+#include "fs-engine/gfx/tilemanager.h"
 #include "fs-engine/sound/musicmanager.h"
 #include "fs-engine/sound/soundmanager.h"
 #include "menus/gamemenuid.h"
@@ -47,6 +52,20 @@
 const int SCROLL_STEP = 16;
 
 const Point2D GameplayMenu::kMiniMapScreenPos = {0, 46 + 44 + 10 + 46 + 44 + 15 + 2 * 32 + 2};
+const double GameplayMenu::kMaxZoom = 3.0;
+//! Each notch of the mouse wheel multiplies or divides the zoom by this value
+const double kZoomStep = 1.25;
+//! Maximum time in ms between two presses of the same agent key to center the view on the agent
+const uint32_t kDoublePressDelay = 400;
+//! How long the marker of a move order stays, in ms
+const uint32_t kMoveMarkerDuration = 600;
+//! Colour of the marker of a move order
+const fs_eng::FSColor kMoveMarkerColour = {90, 255, 90, 255};
+
+//! Width of the map area on screen : it's wider on a wide screen
+static int mapAreaWidth() {
+    return g_System.screenWidth() - MapRenderer::kGameplayPanelWidth;
+}
 
 //#define ANIM_PLUS_FRAME_VIEW
 
@@ -56,7 +75,10 @@ tick_count_(0), last_animate_tick_(0),
 last_motion_x_(320), last_motion_y_(240), drawHintYellowRect_(false),
 hintTimer_(1200, false), hintColorTimer_(200, false), hintSpaceTimer_(500, false),
 mission_(nullptr), selection_(), target_(nullptr),
-mm_renderer_(kMiniMapScreenPos), warningTimer_(20000)
+mm_renderer_(kMiniMapScreenPos), zoom_(1.0), escMenuShown_(false), escMenuHover_(-1), pausedBeforeEscMenu_(false),
+gradeMultiply_({255, 255, 255, 255}), gradeAdd_({0, 0, 0, 255}), hasGradeAdd_(false),
+lastAgentKey_(-1), lastAgentKeyTicks_(0),
+zoomOriginX_(MapRenderer::kGameplayPanelWidth), zoomOriginY_(0), warningTimer_(20000)
 {
     cursorOnShow_ = kGameplayCursor;
     displayOriginPt_.x = 0;
@@ -83,14 +105,14 @@ bool GameplayMenu::scrollOnX() {
 
     // Scroll to the right
     if (scroll_x_ > 0) {
-        if (mpt.ty < mission_->minY()) {
+        if (mpt.ty < scrollMinY()) {
             // we hit the upper right border of the map
             // so we scroll down until the far right corner
             int newWorldY = displayOriginPt_.y + SCROLL_STEP;
             newOriginX += SCROLL_STEP;
             mpt = mission_->get_map()->screenToTilePoint(newOriginX, newWorldY);
 
-            if (mpt.ty < mission_->minY() || mpt.tx > mission_->maxX()) {
+            if (mpt.ty < scrollMinY() || mpt.tx > scrollMaxX()) {
                 // We hit the corner so don't scroll
                 return false;
             } else {
@@ -98,14 +120,14 @@ bool GameplayMenu::scrollOnX() {
                 displayOriginPt_.y = newWorldY;
                 change = true;
             }
-        } else if (mpt.tx > mission_->maxX()) {
+        } else if (mpt.tx > scrollMaxX()) {
             // we hit the lower right border of the map
             // so we scroll up until the far right corner
             int newWorldY = displayOriginPt_.y - SCROLL_STEP;
             newOriginX += SCROLL_STEP;
             mpt = mission_->get_map()->screenToTilePoint(newOriginX, newWorldY);
 
-            if (mpt.ty < mission_->minY() || mpt.tx > mission_->maxX()) {
+            if (mpt.ty < scrollMinY() || mpt.tx > scrollMaxX()) {
                 return false;
             } else {
                 displayOriginPt_.x = newOriginX;
@@ -119,28 +141,28 @@ bool GameplayMenu::scrollOnX() {
         }
 
     } else { // Scroll to the left
-        if (mpt.tx < mission_->minX()) {
+        if (mpt.tx < scrollMinX()) {
             // we hit the upper left border of the map
             // so we scroll down until the far left corner
             int newWorldY = displayOriginPt_.y + SCROLL_STEP;
             newOriginX -= SCROLL_STEP;
             mpt = mission_->get_map()->screenToTilePoint(newOriginX, newWorldY);
 
-            if (mpt.tx < mission_->minX() || mpt.ty > mission_->maxY()) {
+            if (mpt.tx < scrollMinX() || mpt.ty > scrollMaxY()) {
                 return false;
             } else {
                 displayOriginPt_.x = newOriginX;
                 displayOriginPt_.y = newWorldY;
                 change = true;
             }
-        } else if (mpt.ty > mission_->maxY()) {
+        } else if (mpt.ty > scrollMaxY()) {
             // we hit the lower left border of the map
             // so we scroll up until the far left corner
             int newWorldY = displayOriginPt_.y - SCROLL_STEP;
             newOriginX -= SCROLL_STEP;
             mpt = mission_->get_map()->screenToTilePoint(newOriginX, newWorldY);
 
-            if (mpt.tx < mission_->minX() || mpt.ty > mission_->maxY()) {
+            if (mpt.tx < scrollMinX() || mpt.ty > scrollMaxY()) {
                 return false;
             } else {
                 displayOriginPt_.x = newOriginX;
@@ -172,26 +194,26 @@ bool GameplayMenu::scrollOnY() {
 
     // Scroll down
     if (scroll_y_ > 0) {
-        if (mpt.tx > mission_->maxX()) {
+        if (mpt.tx > scrollMaxX()) {
             // we hit the lower right border of the map
             // so we scroll down until the lower corner
             int newOriginX = displayOriginPt_.x - 2*SCROLL_STEP;
             mpt = mission_->get_map()->screenToTilePoint(newOriginX, newWorldY);
 
-            if (mpt.ty > mission_->maxY() || mpt.tx > mission_->maxX()) {
+            if (mpt.ty > scrollMaxY() || mpt.tx > scrollMaxX()) {
                 return false;
             } else {
                 displayOriginPt_.x = newOriginX;
                 displayOriginPt_.y = newWorldY;
                 change = true;
             }
-        } else if (mpt.ty > mission_->maxY()) {
+        } else if (mpt.ty > scrollMaxY()) {
             // we hit the lower left border of the map
             // so we scroll down until the lower corner
             int newOriginX = displayOriginPt_.x + 2*SCROLL_STEP;
             mpt = mission_->get_map()->screenToTilePoint(newOriginX, newWorldY);
 
-            if (mpt.ty > mission_->maxY() || mpt.tx > mission_->maxX()) {
+            if (mpt.ty > scrollMaxY() || mpt.tx > scrollMaxX()) {
                 return false;
             } else {
                 displayOriginPt_.x = newOriginX;
@@ -204,26 +226,26 @@ bool GameplayMenu::scrollOnY() {
         }
 
     } else { // Scroll up
-        if (mpt.tx < mission_->minX()) {
+        if (mpt.tx < scrollMinX()) {
             // we hit the upper right border of the map
             // so we scroll up until the upper corner
             int newOriginX = displayOriginPt_.x + 2*SCROLL_STEP;
             mpt = mission_->get_map()->screenToTilePoint(newOriginX, newWorldY);
 
-            if (mpt.ty < mission_->minY() || mpt.tx < mission_->minX()) {
+            if (mpt.ty < scrollMinY() || mpt.tx < scrollMinX()) {
                 return false;
             } else {
                 displayOriginPt_.x = newOriginX;
                 displayOriginPt_.y = newWorldY;
                 change = true;
             }
-        } else if (mpt.ty < mission_->minY()) {
+        } else if (mpt.ty < scrollMinY()) {
             // we hit the upper left border of the map
             // so we scroll up until the upper corner
             int newOriginX = displayOriginPt_.x - 2*SCROLL_STEP;
             mpt = mission_->get_map()->screenToTilePoint(newOriginX, newWorldY);
 
-            if (mpt.ty < mission_->minY() || mpt.tx < mission_->minX()) {
+            if (mpt.ty < scrollMinY() || mpt.tx < scrollMinX()) {
                 return false;
             } else {
                 displayOriginPt_.x = newOriginX;
@@ -242,17 +264,49 @@ bool GameplayMenu::scrollOnY() {
 /*!
  * Initialize the screen position centered on the squad leader.
  */
+/*!
+ * Limits of the view, in tiles. In hardware mode, the view can go over the whole
+ * map, as peds can walk outside the mission area. In software mode, the view stays
+ * in the mission area as in the original game.
+ */
+int GameplayMenu::scrollMinX() {
+    return pMapTexture_ ? 0 : mission_->minX();
+}
+
+int GameplayMenu::scrollMaxX() {
+    return pMapTexture_ ? mission_->get_map()->maxX() - 1 : mission_->maxX();
+}
+
+int GameplayMenu::scrollMinY() {
+    return pMapTexture_ ? 0 : mission_->minY();
+}
+
+int GameplayMenu::scrollMaxY() {
+    return pMapTexture_ ? mission_->get_map()->maxY() - 1 : mission_->maxY();
+}
+
 void GameplayMenu::initWorldCoords()
 {
-    // get the leader position on the map
-    fs_knl::PedInstance *p_leader = selection_.leader();
+    centerViewOnPed(selection_.leader());
+}
+
+/*!
+ * Moves the view so the given ped is in the middle of the map area.
+ * When the map is zoomed, the zoomed part is also moved to the middle.
+ */
+void GameplayMenu::centerViewOnPed(fs_knl::PedInstance *p_leader)
+{
+    zoomOriginX_ = MapRenderer::kGameplayPanelWidth + (mapAreaWidth() - mapAreaWidth() / zoom_) / 2;
+    zoomOriginY_ = (fs_eng::kScreenHeight - fs_eng::kScreenHeight / zoom_) / 2;
+
+    // get the ped position on the map
     fs_knl::TilePoint leaderPos(p_leader->tileX(),
                                 p_leader->tileY(),
                                 mission_->mmax_z_ + 1,
                                 0, 0);
     Point2D start;
     mission_->get_map()->tileToScreenPoint(leaderPos, &start);
-    start.x -= (fs_eng::kScreenWidth - 129) / 2;
+    start.x -= mapAreaWidth() / 2;
     start.y -= fs_eng::kScreenHeight / 2;
 
     if (start.x < 0)
@@ -264,17 +318,17 @@ void GameplayMenu::initWorldCoords()
     // Check if the position is within map borders
     fs_knl::TilePoint mpt = mission_->get_map()->screenToTilePoint(start.x, start.y);
 
-    if (mpt.tx < mission_->minX())
-        mpt.tx = mission_->minX();
+    if (mpt.tx < scrollMinX())
+        mpt.tx = scrollMinX();
 
-    if (mpt.ty < mission_->minY())
-        mpt.ty = mission_->minY();
+    if (mpt.ty < scrollMinY())
+        mpt.ty = scrollMinY();
 
-    if (mpt.tx > mission_->maxX())
-        mpt.tx = mission_->maxX();
+    if (mpt.tx > scrollMaxX())
+        mpt.tx = scrollMaxX();
 
-    if (mpt.ty > mission_->maxY())
-        mpt.ty = mission_->maxY();
+    if (mpt.ty > scrollMaxY())
+        mpt.ty = scrollMaxY();
 
     // recalculating new screen coords
     fs_knl::TilePoint newPoint(mpt.tx,
@@ -305,14 +359,43 @@ bool GameplayMenu::handleBeforeShow() {
     missionPalette_ = mission_->get_map()->getTileManager()->getPalette();
     g_SpriteMgr.setPalette(missionPalette_);
 
+    // In hardware mode, the map is drawn in a texture so it can be zoomed
+    zoom_ = 1.0;
+    zoomOriginX_ = MapRenderer::kGameplayPanelWidth;
+    zoomOriginY_ = 0;
+    if (g_Ctx.isHardwareRendering() && !pMapTexture_) {
+        pMapTexture_ = g_System.createTexture();
+        // The texture is big enough for the widest screen
+        pMapTexture_->createRenderTargetTexture(fs_eng::kMaxScreenWidth, fs_eng::kScreenHeight);
+    }
+
+    // In hardware mode, agents wear the color of their company on their hat
+    if (g_Ctx.isHardwareRendering() &&
+            g_SpriteMgr.createTintMask(fs_knl::PedInstance::kAgentHeadSprites, fs_knl::PedInstance::kHatColourIndex)) {
+        fs_knl::PedInstance::setAgentHatColours(g_LogoMgr.getColour(g_Session.getLogoColour()),
+            g_Session.getEnemyColour(g_Session.getSelectedBlock()));
+    } else {
+        fs_knl::PedInstance::clearAgentHatColours();
+    }
+
     highlightLeaderMarker();
     updateMarkersPosition();
 
     // Init renderers
-    map_renderer_.init(mission_, &selection_);
+    map_renderer_.init(mission_, &selection_, g_Ctx.isHardwareRendering() && g_Ctx.isLightingEnabled(),
+        g_Ctx.isHardwareRendering());
     mm_renderer_.init(mission_, mission_->getSquad()->hasScanner(), missionPalette_);
     centerMinimapOnLeader();
     isPlayerShooting_ = false;
+    if (pMapTexture_) {
+        applyTimeOfDay();
+    }
+
+    // Development option --export-sprites
+    if (!g_Ctx.getSpriteExportPath().empty()) {
+        exportSpriteSheet(g_Ctx.getSpriteExportPath());
+        EventManager::fire<QuitEvent>(0);
+    }
 
     // Register event handlers
     handleAgentDied_ = EventManager::listen<fs_knl::AgentDiedEvent>(this, &GameplayMenu::onAgentDiedEvent);
@@ -334,9 +417,13 @@ int qanim = 1959, qframe = 0;
 
 bool GameplayMenu::handleTick(uint32_t elapsed)
 {
-    if (paused_)
+    if (paused_) {
+        // In the light editor, the view can still be moved
+        if (lightEditor_) {
+            scrollView();
+        }
         return true;
-    bool change = false;
+    }
     tick_count_ += elapsed;
 
     if (mission_->isRunning()) {
@@ -350,16 +437,7 @@ bool GameplayMenu::handleTick(uint32_t elapsed)
         canPlayPoliceWarnSound_ = true;
     }
 
-    // Scroll the map
-    if (scroll_x_ != 0) {
-        change = scrollOnX();
-        scroll_x_ = 0;
-    }
-
-    if (scroll_y_ != 0) {
-        change = scrollOnY();
-        scroll_y_ = 0;
-    }
+    bool change = scrollView();
 
     if (tick_count_ - last_animate_tick_ > 33) {
         uint32_t diff = tick_count_ - last_animate_tick_;
@@ -384,8 +462,280 @@ bool GameplayMenu::handleTick(uint32_t elapsed)
     return true;
 }
 
-void GameplayMenu::handleRender() {
+bool GameplayMenu::scrollView() {
+    bool change = false;
+    // Arrows and WASD held down scroll the map, in several directions at the
+    // same time. Not with Ctrl as Ctrl+D is the self-destruction
+    if (!g_System.isKeyModStatePressed(fs_eng::KMD_CTRL)) {
+        int keyX = (g_System.isKeyDown(fs_eng::kKeyCode_Right) || g_System.isKeyDown(fs_eng::kKeyCode_D))
+                    - (g_System.isKeyDown(fs_eng::kKeyCode_Left) || g_System.isKeyDown(fs_eng::kKeyCode_A));
+        int keyY = (g_System.isKeyDown(fs_eng::kKeyCode_Down) || g_System.isKeyDown(fs_eng::kKeyCode_S))
+                    - (g_System.isKeyDown(fs_eng::kKeyCode_Up) || g_System.isKeyDown(fs_eng::kKeyCode_W));
+        if (keyX != 0) {
+            scroll_x_ = keyX * SCROLL_STEP;
+        }
+        if (keyY != 0) {
+            scroll_y_ = keyY * SCROLL_STEP;
+        }
+    }
+
+    // Scroll the map
+    if (scroll_x_ != 0) {
+        change = scrollOnX();
+        scroll_x_ = 0;
+    }
+
+    if (scroll_y_ != 0) {
+        change = scrollOnY() || change;
+        scroll_y_ = 0;
+    }
+    return change;
+}
+
+/*!
+ * Draws the sprites of the mission (with its palette) in a PNG file :
+ * - first the blood pool,
+ * - then the death animations of agents, one row per animation, twice as big,
+ * - then the whole sprite sheet as it's stored in memory.
+ * The sprites are read from the original game files when the game starts.
+ */
+void GameplayMenu::exportSpriteSheet(const std::string &path) {
+    struct AnimRow {
+        const char *name;
+        uint16_t firstAnim;
+        int nbDirections;
+    };
+    // Animation ids of agents (see PedInstance::setAnimations())
+    const AnimRow rows[] = {
+        {"DYING", 206, 1}, {"DEAD AGENT", 205, 1}, {"DEAD", 207, 1},
+        {"HIT", 194, 4}, {"VAPORIZED", 198, 4},
+        {"BURNING", 209, 1}, {"DYING BURNING", 210, 1}, {"SMOKING", 211, 1}, {"BURNT", 828, 1}
+    };
+    const int kBloodPoolSprite = 709;
+    const int kCellWidth = 40;
+    const int kCellHeight = 44;
+    const int kLabelWidth = 104;
+    const int kSectionWidth = 512;
+    const int kBloodHeight = 40;
+    const int kSheetWidth = 1024;
+    const int kSheetHeight = 640;
+    const fs_eng::FSColor kBackground = {60, 60, 70, 255};
+
+    int nbRows = 0;
+    for (const AnimRow &row : rows) {
+        nbRows += row.nbDirections;
+    }
+    const int sectionHeight = kBloodHeight + nbRows * kCellHeight;
+
+    // The death animations are drawn at their size, then twice as big in the final image
+    std::unique_ptr<fs_eng::FSTexture> pSection = g_System.createTexture();
+    pSection->createRenderTargetTexture(kSectionWidth, sectionHeight);
+    pSection->setAsRenderTarget();
+    g_System.drawFillRect({0, 0}, kSectionWidth, sectionHeight, kBackground);
+    fs_eng::MenuFont *pFont = getMenuFont(fs_eng::FontManager::SIZE_1);
+
+    pFont->drawText(4, 14, "BLOOD POOL", false, false);
+    g_SpriteMgr.drawSpriteX2(kBloodPoolSprite, {kLabelWidth, 4});
+
+    int y = kBloodHeight;
+    for (const AnimRow &row : rows) {
+        for (int dir = 0; dir < row.nbDirections; dir++) {
+            uint16_t anim = row.firstAnim + dir;
+            std::string label = row.name;
+            if (row.nbDirections > 1) {
+                label += " " + std::to_string(dir + 1);
+            }
+            pFont->drawText(4, y + kCellHeight / 2 - 4, label, false, false);
+            int nbFrames = g_SpriteMgr.lastFrame(anim) + 1;
+            for (int frame = 0; frame < nbFrames && kLabelWidth + (frame + 1) * kCellWidth <= kSectionWidth; frame++) {
+                // Frames are drawn from the feet of the ped
+                g_SpriteMgr.drawFrame(anim, frame, {kLabelWidth + frame * kCellWidth + kCellWidth / 2, y + kCellHeight - 6});
+            }
+            y += kCellHeight;
+        }
+    }
+
+    std::unique_ptr<fs_eng::FSTexture> pSheet = g_System.createTexture();
+    pSheet->createRenderTargetTexture(kSheetWidth, sectionHeight * 2 + kSheetHeight);
+    pSheet->setAsRenderTarget();
+    g_System.drawFillRect({0, 0}, kSheetWidth, sectionHeight * 2 + kSheetHeight, kBackground);
+    pSection->renderScaled({0, 0}, kSectionWidth, sectionHeight, {0, 0}, kSectionWidth * 2, sectionHeight * 2);
+    g_SpriteMgr.drawSpriteSheet({0, sectionHeight * 2}, kSheetWidth, kSheetHeight);
+
+    g_System.saveScreenshot(path);
+
+    // A second file with all the tiles and their number : <name>_tiles.png
+    const int kTilesPerRow = 16;
+    const int kTileCellHeight = fs_eng::Tile::kTileHeight + 12;
+    const int kNbTiles = fs_eng::TileManager::kNumOfTiles;
+    const int tilesHeight = (kNbTiles + kTilesPerRow - 1) / kTilesPerRow * kTileCellHeight;
+    std::unique_ptr<fs_eng::FSTexture> pTiles = g_System.createTexture();
+    pTiles->createRenderTargetTexture(kTilesPerRow * fs_eng::Tile::kTileWidth, tilesHeight);
+    pTiles->setAsRenderTarget();
+    g_System.drawFillRect({0, 0}, kTilesPerRow * fs_eng::Tile::kTileWidth, tilesHeight, kBackground);
+    fs_eng::TileManager *pTileManager = mission_->get_map()->getTileManager();
+    pTileManager->setColorModulation({255, 255, 255, 255});
+    for (int id = 0; id < kNbTiles; id++) {
+        int x = (id % kTilesPerRow) * fs_eng::Tile::kTileWidth;
+        int y = (id / kTilesPerRow) * kTileCellHeight;
+        pFont->drawText(x + 2, y + 1, std::to_string(id), false, false);
+        pTileManager->drawTile(pTileManager->getTile(static_cast<uint8_t>(id)), x, y + 12);
+    }
+    std::string tilesPath = path;
+    size_t dot = tilesPath.rfind('.');
+    tilesPath.insert(dot == std::string::npos ? tilesPath.size() : dot, "_tiles");
+    g_System.saveScreenshot(tilesPath);
+
+    // A third file with the map as it's seen at the start of the mission, twice as big,
+    // with the number of each tile written on it : <name>_map.png
+    std::unique_ptr<fs_eng::FSTexture> pView = g_System.createTexture();
+    pView->createRenderTargetTexture(fs_eng::kMaxScreenWidth, fs_eng::kScreenHeight);
+    pView->setAsRenderTarget();
+    g_System.clearScreen();
     map_renderer_.render(displayOriginPt_);
+    std::unique_ptr<fs_eng::FSTexture> pMap = g_System.createTexture();
+    const int kMapWidth = mapAreaWidth() * 2;
+    const int kMapHeight = fs_eng::kScreenHeight * 2;
+    pMap->createRenderTargetTexture(kMapWidth, kMapHeight);
+    pMap->setAsRenderTarget();
+    pView->renderScaled({MapRenderer::kGameplayPanelWidth, 0}, mapAreaWidth(), fs_eng::kScreenHeight,
+        {0, 0}, kMapWidth, kMapHeight);
+    // The number is written in the middle of the top of the tile, last drawn tile on top
+    for (const auto &[pTile, pos] : map_renderer_.drawnTiles()) {
+        std::string number = std::to_string(pTile->id());
+        Point2D textPos = {(pos.x - MapRenderer::kGameplayPanelWidth + fs_eng::Tile::kTileWidth / 2) * 2 - pFont->textWidth(number) / 2,
+                           (pos.y + fs_eng::Tile::kTileHeight / 3) * 2};
+        g_System.drawFillRect(textPos.add(-1, -1), pFont->textWidth(number) + 2, 9, {0, 0, 0, 255});
+        pFont->drawText(textPos.x, textPos.y, number, true, false);
+    }
+    std::string mapPath = path;
+    mapPath.insert(dot == std::string::npos ? mapPath.size() : dot, "_map");
+    g_System.saveScreenshot(mapPath);
+
+    g_System.resetRenderTarget();
+}
+
+void GameplayMenu::showMoveMarker(const fs_knl::TilePoint &pos) {
+    moveMarkerPos_ = pos;
+    moveMarkerTicks_ = g_System.getTicks();
+    if (moveMarkerTicks_ == 0) {
+        moveMarkerTicks_ = 1;
+    }
+}
+
+/*!
+ * The marker is a diamond lying on the floor, like a tile, that shrinks towards the
+ * destination and fades out.
+ */
+void GameplayMenu::drawMoveMarker() {
+    if (moveMarkerTicks_ == 0) {
+        return;
+    }
+    uint32_t age = g_System.getTicks() - moveMarkerTicks_;
+    if (age >= kMoveMarkerDuration) {
+        moveMarkerTicks_ = 0;
+        return;
+    }
+    double progress = age / static_cast<double>(kMoveMarkerDuration);
+    fs_eng::FSColor colour = kMoveMarkerColour;
+    colour.a = static_cast<uint8_t>(255 * (1.0 - progress));
+
+    Point2D centre = map_renderer_.floorPointOnScreen(moveMarkerPos_, displayOriginPt_);
+    int halfWidth = static_cast<int>(6 + 22 * (1.0 - progress));
+    int halfHeight = halfWidth / 2;
+    Point2D corners[4] = {
+        centre.add(0, -halfHeight), centre.add(halfWidth, 0), centre.add(0, halfHeight), centre.add(-halfWidth, 0)
+    };
+    // Each side is a thin band so it can fade out
+    for (int i = 0; i < 4; i++) {
+        Point2D side[4] = {corners[i], corners[(i + 1) % 4], corners[(i + 1) % 4].add(0, 2), corners[i].add(0, 2)};
+        g_System.drawFillPolygon(side, 4, colour);
+    }
+    Point2D dot[4] = {centre.add(0, -2), centre.add(4, 0), centre.add(0, 2), centre.add(-4, 0)};
+    g_System.drawFillPolygon(dot, 4, colour);
+}
+
+int GameplayMenu::seeThroughLevel() {
+    fs_knl::PedInstance *pLeader = selection_.leader();
+    if (escMenuShown_ || pLeader == nullptr || !g_System.isKeyDown(fs_eng::kKeyCode_B)) {
+        return -1;
+    }
+    return pLeader->tileZ();
+}
+
+void GameplayMenu::renderMap() {
+    map_renderer_.setSeeThroughLevel(seeThroughLevel());
+    if (!pMapTexture_) {
+        map_renderer_.render(displayOriginPt_);
+        map_renderer_.drawWalkableOutline(displayOriginPt_);
+        drawMoveMarker();
+        return;
+    }
+
+    pMapTexture_->setAsRenderTarget();
+    g_System.clearScreen();
+    map_renderer_.render(displayOriginPt_);
+    // The colour grade for the time of day is the ambient light : lights brighten
+    // the map around them. It only changes the map, not the panel
+    bool withLights = map_renderer_.isLightingEnabled();
+    if (withLights) {
+        map_renderer_.applyLights(pMapTexture_.get(), gradeMultiply_);
+    }
+    // The outline is drawn after the lights so it can be seen at night
+    map_renderer_.drawWalkableOutline(displayOriginPt_);
+    drawMoveMarker();
+    if (lightEditor_) {
+        drawLightEditorTiles();
+    }
+    g_System.resetRenderTarget();
+
+    Point2D src = {static_cast<int>(zoomOriginX_), static_cast<int>(zoomOriginY_)};
+    int srcWidth = static_cast<int>(mapAreaWidth() / zoom_);
+    int srcHeight = static_cast<int>(fs_eng::kScreenHeight / zoom_);
+    pMapTexture_->setColorModulation(withLights ? fs_eng::FSColor {255, 255, 255, 255} : gradeMultiply_);
+    pMapTexture_->renderScaled(src, srcWidth, srcHeight, {MapRenderer::kGameplayPanelWidth, 0}, mapAreaWidth(), fs_eng::kScreenHeight);
+    if (hasGradeAdd_) {
+        pMapTexture_->setBlendMode(fs_eng::FSTexture::BlendMode::kAdd);
+        pMapTexture_->setColorModulation(gradeAdd_);
+        pMapTexture_->renderScaled(src, srcWidth, srcHeight, {MapRenderer::kGameplayPanelWidth, 0}, mapAreaWidth(), fs_eng::kScreenHeight);
+        pMapTexture_->setBlendMode(fs_eng::FSTexture::BlendMode::kNone);
+    }
+}
+
+/*!
+ * Converts a point on the screen into the coordinates the map would have
+ * without zoom. Points on the panel are not changed.
+ */
+Point2D GameplayMenu::unzoomPoint(Point2D point) {
+    if (point.x < MapRenderer::kGameplayPanelWidth || zoom_ == 1.0) {
+        return point;
+    }
+    return {static_cast<int>(zoomOriginX_ + (point.x - MapRenderer::kGameplayPanelWidth) / zoom_),
+            static_cast<int>(zoomOriginY_ + point.y / zoom_)};
+}
+
+void GameplayMenu::handleMouseWheel(Point2D point, int delta) {
+    if (!pMapTexture_ || escMenuShown_ || point.x < MapRenderer::kGameplayPanelWidth || delta == 0) {
+        return;
+    }
+
+    // The point of the map under the mouse stays under the mouse
+    Point2D mapPoint = unzoomPoint(point);
+    double newZoom = delta > 0 ? zoom_ * kZoomStep : zoom_ / kZoomStep;
+    zoom_ = std::clamp(newZoom, 1.0, kMaxZoom);
+
+    double viewWidth = mapAreaWidth() / zoom_;
+    double viewHeight = fs_eng::kScreenHeight / zoom_;
+    zoomOriginX_ = std::clamp(mapPoint.x - (point.x - MapRenderer::kGameplayPanelWidth) / zoom_,
+        (double) MapRenderer::kGameplayPanelWidth, g_System.screenWidth() - viewWidth);
+    zoomOriginY_ = std::clamp(mapPoint.y - point.y / zoom_, 0.0, fs_eng::kScreenHeight - viewHeight);
+
+    // Update the target under the mouse
+    handleMouseMotion(point, 0);
+}
+
+void GameplayMenu::handleRender() {
+    renderMap();
     g_System.drawRect({0,0}, 129, fs_eng::kScreenHeight, menu_manager_->kMenuColorBlack);
     agt_sel_renderer_.render(selection_, mission_->getSquad(), missionPalette_);
     drawSelectAllButton();
@@ -393,7 +743,11 @@ void GameplayMenu::handleRender() {
     drawWeaponSelectors();
     mm_renderer_.render(missionPalette_);
 
-    if (paused_) {
+    if (escMenuShown_) {
+        drawEscMenu();
+    } else if (lightEditor_) {
+        drawLightEditorPanel();
+    } else if (paused_) {
         drawPausePanel();
     }
 
@@ -479,12 +833,22 @@ void GameplayMenu::handleLeave()
     scroll_x_ = 0;
     scroll_y_ = 0;
     paused_ = false;
+    escMenuShown_ = false;
+    lightEditor_ = false;
     ipa_chng_.ipa_chng = -1;
 }
 
 void GameplayMenu::handleMouseMotion(Point2D point, [[maybe_unused]] uint32_t state) {
     last_motion_x_ = point.x;
     last_motion_y_ = point.y;
+    if (escMenuShown_) {
+        escMenuHover_ = escMenuItemAt(point);
+        return;
+    }
+    if (lightEditor_) {
+        lightEditorHover_ = lightEditorItemAt(point);
+        return;
+    }
     // locking mouse motion on ipa change until mouseup is recieved
     if (ipa_chng_.ipa_chng != -1 && menu_manager_->isMouseDragged()) {
         fs_knl::PedInstance *p = mission_->ped(ipa_chng_.agent_used);
@@ -511,7 +875,7 @@ void GameplayMenu::handleMouseMotion(Point2D point, [[maybe_unused]] uint32_t st
 
     if (last_motion_x_ < 5) {
         scroll_x_ = - SCROLL_STEP;
-    } else if (last_motion_x_ > fs_eng::kScreenWidth - 5) {
+    } else if (last_motion_x_ > g_System.screenWidth() - 5) {
         scroll_x_ = SCROLL_STEP;
     }
 
@@ -520,6 +884,9 @@ void GameplayMenu::handleMouseMotion(Point2D point, [[maybe_unused]] uint32_t st
     } else if (last_motion_y_ > fs_eng::kScreenHeight - 5) {
         scroll_y_ = SCROLL_STEP;
     }
+
+    // Scrolling uses the edges of the screen, the rest uses the map coordinates
+    point = unzoomPoint(point);
 
     bool inrange = false;
     target_ = NULL;
@@ -644,6 +1011,15 @@ void GameplayMenu::handleMouseMotion(Point2D point, [[maybe_unused]] uint32_t st
 
 bool GameplayMenu::handleMouseDown(Point2D point, int button)
 {
+    if (escMenuShown_) {
+        handleEscMenuClick(escMenuItemAt(point), button);
+        return true;
+    }
+    if (lightEditor_) {
+        handleLightEditorClick(point, button);
+        return true;
+    }
+
     if (paused_)
         return true;
 
@@ -683,7 +1059,7 @@ bool GameplayMenu::handleMouseDown(Point2D point, int button)
         }
     } else {
         // User clicked on the map
-        handleClickOnMap(point, button);
+        handleClickOnMap(unzoomPoint(point), button);
     }
 
     return true;
@@ -766,8 +1142,10 @@ void GameplayMenu::handleClickOnMap(Point2D point, int button) {
             default:
                 break;
             }
-        } else if (mission_->getWalkable(mapPt)) {
+        } else if (mission_->getWalkable(mapPt, seeThroughLevel())) {
+            // When buildings are see-through, the click is on the level of the leader
             selection_.moveTo(mapPt, ctrl);
+            showMoveMarker(mapPt);
         }
     } else if (button == kMouseRightButton) {
         fs_knl::WorldPoint aimedAtLocW;
@@ -793,6 +1171,7 @@ void GameplayMenu::handleClickOnMinimap(Point2D point) {
     {
         // Destination is walkable so go
         selection_.moveTo(pt, false);
+        showMoveMarker(pt);
      }
 }
 
@@ -855,6 +1234,22 @@ void GameplayMenu::handleMouseUp([[maybe_unused]] Point2D point, int button)
 bool GameplayMenu::handleUnMappedKey(const fs_eng::FS_Key key) {
     bool consumed = true;
 
+    if (lightEditor_) {
+        // Escape goes back to the game
+        if (key.keyCode == fs_eng::kKeyCode_Escape) {
+            closeLightEditor();
+        }
+        return true;
+    }
+    // Escape opens or closes the menu while the mission is running
+    if (key.keyCode == fs_eng::kKeyCode_Escape && mission_->isRunning()) {
+        showEscMenu(!escMenuShown_);
+        return true;
+    }
+    if (escMenuShown_) {
+        return true;
+    }
+
     // Pause/unpause game
     if (key.keyCode == fs_eng::kKeyCode_P) {
         paused_ = !paused_;
@@ -906,16 +1301,16 @@ bool GameplayMenu::handleUnMappedKey(const fs_eng::FS_Key key) {
         selectAllAgents();
     }
     else if (key.keyCode == fs_eng::kKeyCode_1) {
-        selectAgent(0, ctrl);
+        handleAgentKey(0, ctrl);
     }
     else if (key.keyCode == fs_eng::kKeyCode_2) {
-        selectAgent(1, ctrl);
+        handleAgentKey(1, ctrl);
     }
     else if (key.keyCode == fs_eng::kKeyCode_3) {
-        selectAgent(2, ctrl);
+        handleAgentKey(2, ctrl);
     }
     else if (key.keyCode == fs_eng::kKeyCode_4) {
-        selectAgent(3, ctrl);
+        handleAgentKey(3, ctrl);
     } else if (key.keyCode == fs_eng::kKeyCode_Left) { // Scroll the map to the left
         scroll_x_ = -SCROLL_STEP;
     } else if (key.keyCode == fs_eng::kKeyCode_Right) { // Scroll the map to the right
@@ -1162,11 +1557,390 @@ void GameplayMenu::drawMissionHint() {
     gameFont()->drawText(x, 46 + 44 + 10 + 46 + 44 + 2 - 1, hint_, aColor);
 }
 
+//! Size of the Escape menu : it's in the middle of the map area (see escMenuPos())
+const int kEscMenuWidth = 300;
+const int kEscMenuY = 110;
+
+static Point2D escMenuPos() {
+    return {MapRenderer::kGameplayPanelWidth + (mapAreaWidth() - kEscMenuWidth) / 2, kEscMenuY};
+}
+const int kEscMenuItemsY = 40;
+const int kEscMenuItemHeight = 26;
+//! Software mode : names for the palettes that can be chosen as time of day (0 = the palette of the mission)
+const char *kPaletteNames[] = {"MISSION", "DAY AMBER", "NIGHT", "DAY GREEN", "DUSK RED", "DUSK SAND"};
+const int kNbPalettes = 6;
+
+/*!
+ * Hardware mode : the time of day is a color grade of the map. The map is multiplied
+ * by the color, then the map times "add" is added to make it brighter.
+ * The original mission palettes all have about the same brightness once drawn, so
+ * the same grade gives the same result whatever the palette of the mission.
+ */
+struct TimeOfDayGrade {
+    const char *name;
+    fs_eng::FSColor multiply;
+    double add;
+    //! Brightness of the scene compared to the mission's own look : sets the strength of the lighting
+    double brightness;
+};
+const TimeOfDayGrade kTimesOfDay[] = {
+    {"MISSION", {255, 255, 255, 255}, 0.0,  1.0},
+    {"DAY",     {255, 252, 240, 255}, 0.25, 1.2},
+    {"DUSK",    {235, 160, 115, 255}, 0.0,  0.7},
+    {"NIGHT",   { 70,  82, 140, 255}, 0.0,  0.5},
+    {"DAWN",    {250, 195, 200, 255}, 0.0,  0.85}
+};
+const int kNbTimesOfDay = 5;
+
+void GameplayMenu::showEscMenu(bool show) {
+    if (show == escMenuShown_) {
+        return;
+    }
+    escMenuShown_ = show;
+    escMenuHover_ = -1;
+    if (show) {
+        pausedBeforeEscMenu_ = paused_;
+        if (!paused_) {
+            paused_ = true;
+            stopShootingEvent();
+            g_MusicMgr.pause();
+        }
+        g_System.usePointerCursor();
+    } else {
+        paused_ = pausedBeforeEscMenu_;
+        if (!paused_) {
+            g_MusicMgr.resume();
+        }
+        // Restore the cursor for what is under the mouse
+        handleMouseMotion({last_motion_x_, last_motion_y_}, 0);
+    }
+}
+
+void GameplayMenu::drawEscMenu() {
+    const int kEscMenuHeight = kEscMenuItemsY + kEscMenuNbItems * kEscMenuItemHeight + 8;
+    g_System.drawFillRect(escMenuPos(), kEscMenuWidth, kEscMenuHeight, menu_manager_->kMenuColorBlack);
+    g_System.drawRect(escMenuPos(), kEscMenuWidth, kEscMenuHeight, menu_manager_->kMenuColorDarkGreen);
+    g_System.drawRect({escMenuPos().x + 1, escMenuPos().y + 1}, kEscMenuWidth - 2, kEscMenuHeight - 2, menu_manager_->kMenuColorDarkGreen);
+
+    fs_eng::MenuFont *pFont = getMenuFont(fs_eng::FontManager::SIZE_2);
+    std::string title = getMessage("GAME_PAUSED");
+    pFont->drawText(escMenuPos().x + (kEscMenuWidth - pFont->textWidth(title)) / 2, escMenuPos().y + 10, title, true);
+
+    std::string items[kEscMenuNbItems] = {
+        "RESUME",
+        std::string("TIME OF DAY  ") + (pMapTexture_ ? kTimesOfDay[g_Ctx.getTimeOfDay()].name : kPaletteNames[g_Ctx.getMissionPalette()]),
+        std::string("FULLSCREEN  ") + (g_System.isFullScreen() ? "ON" : "OFF"),
+        // Lighting only exists in hardware mode
+        pMapTexture_ ? std::string("LIGHTING  ") + (g_Ctx.isLightingEnabled() ? "ON" : "OFF") : std::string(""),
+        pMapTexture_ ? std::string("LIGHT EDITOR") : std::string(""),
+        "ABORT MISSION"
+    };
+    for (int i = 0; i < kEscMenuNbItems; i++) {
+        int y = escMenuPos().y + kEscMenuItemsY + i * kEscMenuItemHeight;
+        pFont->drawText(escMenuPos().x + (kEscMenuWidth - pFont->textWidth(items[i])) / 2, y, items[i], i == escMenuHover_);
+    }
+}
+
+int GameplayMenu::escMenuItemAt(Point2D point) {
+    if (point.x < escMenuPos().x || point.x >= escMenuPos().x + kEscMenuWidth) {
+        return -1;
+    }
+    int dy = point.y - (escMenuPos().y + kEscMenuItemsY);
+    if (dy < 0) {
+        return -1;
+    }
+    int item = dy / kEscMenuItemHeight;
+    return item < kEscMenuNbItems ? item : -1;
+}
+
+void GameplayMenu::handleEscMenuClick(int item, int button) {
+    switch (item) {
+    case kEscMenuResume:
+        showEscMenu(false);
+        break;
+    case kEscMenuTimeOfDay:
+        {
+            // Left click for the next one, right click for the previous one
+            if (pMapTexture_) {
+                int step = button == kMouseRightButton ? kNbTimesOfDay - 1 : 1;
+                g_Ctx.updateTimeOfDay((g_Ctx.getTimeOfDay() + step) % kNbTimesOfDay);
+                applyTimeOfDay();
+            } else {
+                int step = button == kMouseRightButton ? kNbPalettes - 1 : 1;
+                g_Ctx.updateMissionPalette((g_Ctx.getMissionPalette() + step) % kNbPalettes);
+                applyMissionPalette();
+            }
+        }
+        break;
+    case kEscMenuFullScreen:
+        g_System.setFullScreen(!g_System.isFullScreen());
+        g_Ctx.updateFullScreen(g_System.isFullScreen());
+        break;
+    case kEscMenuLighting:
+        if (pMapTexture_) {
+            g_Ctx.updateLighting(!g_Ctx.isLightingEnabled());
+            map_renderer_.setLightingEnabled(g_Ctx.isLightingEnabled());
+            applyTimeOfDay();
+        }
+        break;
+    case kEscMenuLightEditor:
+        if (pMapTexture_) {
+            openLightEditor();
+        }
+        break;
+    case kEscMenuAbort:
+        escMenuShown_ = false;
+        paused_ = false;
+        if (mission_->isRunning()) {
+            mission_->endWithStatus(fs_knl::Mission::kMissionStatusAborted);
+        }
+        // Display only the menu up animation
+        menu_manager_->gotoMenu(fs_game_menus::kMenuIdFliMissionAborted);
+        break;
+    default:
+        break;
+    }
+}
+
+void GameplayMenu::applyMissionPalette() {
+    int paletteId = g_Ctx.getMissionPalette() != 0 ? g_Ctx.getMissionPalette() : g_Session.getSelectedBlock().paletteId;
+    fs_eng::TileManager *pTileManager = mission_->get_map()->getTileManager();
+    pTileManager->setPalette(paletteId);
+    missionPalette_ = pTileManager->getPalette();
+    g_SpriteMgr.setPalette(missionPalette_);
+    mm_renderer_.updatePalette(missionPalette_);
+}
+
+void GameplayMenu::applyTimeOfDay() {
+    const TimeOfDayGrade &grade = kTimesOfDay[g_Ctx.getTimeOfDay()];
+
+    // Multiplying can only darken : to make the map brighter, part of it is added again
+    gradeMultiply_ = grade.multiply;
+    uint8_t add = static_cast<uint8_t>(255 * grade.add);
+    gradeAdd_ = {add, add, add, 255};
+    hasGradeAdd_ = grade.add > 0;
+
+    // The lighting is weaker when the scene is dark
+    map_renderer_.setSceneBrightness(grade.brightness);
+}
+
+//! The light editor panel is in the top right corner of the map area
+const int kLightEditorWidth = 260;
+const int kLightEditorItemsY = 40;
+const int kLightEditorItemHeight = 18;
+const int kLightEditorHeight = kLightEditorItemsY + 6 * kLightEditorItemHeight + 44;
+
+static Point2D lightEditorPos() {
+    return {MapRenderer::kGameplayPanelWidth + mapAreaWidth() - kLightEditorWidth - 8, 8};
+}
+//! Radius of the light in the editor : 0 is automatic, then from kLightEditorMinRadius by steps
+const int kLightEditorMinRadius = 20;
+const int kLightEditorMaxRadius = 160;
+const int kLightEditorRadiusStep = 10;
+//! Colours of light that can be chosen in the editor (plus the automatic one, from the tile)
+struct LightColourPreset {
+    const char *name;
+    fs_eng::FSColor colour;
+};
+const LightColourPreset kLightColours[] = {
+    {"WARM",   {255, 215, 150, 255}},
+    {"WHITE",  {255, 250, 235, 255}},
+    {"COOL",   {170, 210, 255, 255}},
+    {"RED",    {255,  70,  60, 255}},
+    {"ORANGE", {255, 150,  50, 255}},
+    {"GREEN",  {120, 255, 120, 255}},
+    {"BLUE",   { 80, 140, 255, 255}},
+    {"PINK",   {255, 130, 220, 255}}
+};
+const int kNbLightColours = 8;
+
+//! Returns the index of the colour preset for the setting : -1 for automatic or a colour not in the presets
+static int lightColourIndex(const MapLighting::TileSetting &setting) {
+    if (!setting.hasColour) {
+        return -1;
+    }
+    for (int i = 0; i < kNbLightColours; i++) {
+        const fs_eng::FSColor &c = kLightColours[i].colour;
+        if (c.r == setting.colour.r && c.g == setting.colour.g && c.b == setting.colour.b) {
+            return i;
+        }
+    }
+    return -1;
+}
+
+void GameplayMenu::openLightEditor() {
+    // The editor shows the lighting so it must be on
+    if (!g_Ctx.isLightingEnabled()) {
+        g_Ctx.updateLighting(true);
+        map_renderer_.setLightingEnabled(true);
+        applyTimeOfDay();
+    }
+    // The game stays paused as with the Escape menu
+    escMenuShown_ = false;
+    escMenuHover_ = -1;
+    lightEditor_ = true;
+    lightEditorHover_ = -1;
+    lightEditorStatus_ = "CLICK ON A TILE";
+    g_System.usePointerCursor();
+}
+
+void GameplayMenu::closeLightEditor() {
+    lightEditor_ = false;
+    paused_ = pausedBeforeEscMenu_;
+    if (!paused_) {
+        g_MusicMgr.resume();
+    }
+    handleMouseMotion({last_motion_x_, last_motion_y_}, 0);
+}
+
+int GameplayMenu::lightEditorItemAt(Point2D point) {
+    Point2D pos = lightEditorPos();
+    if (point.x < pos.x || point.x >= pos.x + kLightEditorWidth || point.y < pos.y || point.y >= pos.y + kLightEditorHeight) {
+        return -1;
+    }
+    int dy = point.y - (pos.y + kLightEditorItemsY);
+    if (dy >= 0 && dy < kLightEditorNbItems * kLightEditorItemHeight) {
+        return dy / kLightEditorItemHeight;
+    }
+    return kLightEditorNbItems;
+}
+
+void GameplayMenu::handleLightEditorClick(Point2D point, int button) {
+    int item = lightEditorItemAt(point);
+    if (item == -1) {
+        // A click on the map selects the tile under the mouse
+        if (point.x >= MapRenderer::kGameplayPanelWidth) {
+            Point2D tilePos;
+            const fs_eng::Tile *pTile = map_renderer_.lighting().tileAt(unzoomPoint(point), &tilePos);
+            lightEditorTile_ = pTile != nullptr ? pTile->id() : -1;
+            lightEditorStatus_ = pTile != nullptr ? "" : "CLICK ON A TILE";
+        }
+        return;
+    }
+
+    MapLighting &lighting = map_renderer_.lighting();
+    // Left click for the next value, right click for the previous one
+    int step = button == kMouseRightButton ? -1 : 1;
+    if (item == kLightEditorSave) {
+        lightEditorStatus_ = lighting.saveTileSettings() ? "SAVED" : "COULD NOT SAVE";
+        return;
+    }
+    if (item == kLightEditorClose) {
+        closeLightEditor();
+        return;
+    }
+    if (lightEditorTile_ == -1 || item >= kLightEditorNbItems) {
+        return;
+    }
+
+    MapLighting::TileSetting setting = lighting.tileSetting(lightEditorTile_);
+    switch (item) {
+    case kLightEditorGlow:
+        setting.glow = static_cast<MapLighting::Glow>((static_cast<int>(setting.glow) + 3 + step) % 3);
+        break;
+    case kLightEditorLight:
+        setting.light = static_cast<MapLighting::LightMode>((static_cast<int>(setting.light) + 3 + step) % 3);
+        break;
+    case kLightEditorRadius:
+        {
+            // Automatic, then the radius from the smallest to the biggest
+            int nbValues = (kLightEditorMaxRadius - kLightEditorMinRadius) / kLightEditorRadiusStep + 2;
+            int index = setting.radius == 0 ? 0 : (setting.radius - kLightEditorMinRadius) / kLightEditorRadiusStep + 1;
+            index = (std::clamp(index, 0, nbValues - 1) + nbValues + step) % nbValues;
+            setting.radius = index == 0 ? 0 : kLightEditorMinRadius + (index - 1) * kLightEditorRadiusStep;
+        }
+        break;
+    case kLightEditorColour:
+        {
+            // Automatic is -1, then the presets
+            int index = (lightColourIndex(setting) + 1 + kNbLightColours + 1 + step) % (kNbLightColours + 1) - 1;
+            setting.hasColour = index != -1;
+            setting.colour = index != -1 ? kLightColours[index].colour : fs_eng::FSColor {255, 255, 255, 255};
+        }
+        break;
+    default:
+        break;
+    }
+    lighting.setTileSetting(lightEditorTile_, setting);
+    lightEditorStatus_ = "NOT SAVED";
+}
+
+void GameplayMenu::drawLightEditorTiles() {
+    const fs_eng::FSColor kHoverColour = {255, 255, 255, 255};
+    const fs_eng::FSColor kSelectedColour = {255, 220, 0, 255};
+    // All the places where the selected tile is drawn
+    for (const auto &drawn : map_renderer_.drawnTiles()) {
+        if (drawn.first->id() == lightEditorTile_) {
+            g_System.drawRect(drawn.second, fs_eng::Tile::kTileWidth, fs_eng::Tile::kTileHeight, kSelectedColour);
+        }
+    }
+    Point2D mouse = {last_motion_x_, last_motion_y_};
+    if (mouse.x >= MapRenderer::kGameplayPanelWidth && lightEditorItemAt(mouse) == -1) {
+        Point2D tilePos;
+        if (map_renderer_.lighting().tileAt(unzoomPoint(mouse), &tilePos) != nullptr) {
+            g_System.drawRect(tilePos, fs_eng::Tile::kTileWidth, fs_eng::Tile::kTileHeight, kHoverColour);
+        }
+    }
+}
+
+void GameplayMenu::drawLightEditorPanel() {
+    Point2D pos = lightEditorPos();
+    g_System.drawFillRect(pos, kLightEditorWidth, kLightEditorHeight, menu_manager_->kMenuColorBlack);
+    g_System.drawRect(pos, kLightEditorWidth, kLightEditorHeight, menu_manager_->kMenuColorDarkGreen);
+    g_System.drawRect(pos.add(1, 1), kLightEditorWidth - 2, kLightEditorHeight - 2, menu_manager_->kMenuColorDarkGreen);
+
+    fs_eng::MenuFont *pFont = getMenuFont(fs_eng::FontManager::SIZE_1);
+    pFont->drawText(pos.x + 10, pos.y + 8, "LIGHT EDITOR", true);
+
+    // Under the title, the tile under the mouse and the selected one
+    Point2D tilePos;
+    const fs_eng::Tile *pHover = nullptr;
+    Point2D mouse = {last_motion_x_, last_motion_y_};
+    if (mouse.x >= MapRenderer::kGameplayPanelWidth && lightEditorItemAt(mouse) == -1) {
+        pHover = map_renderer_.lighting().tileAt(unzoomPoint(mouse), &tilePos);
+    }
+    std::string tileInfo = lightEditorTile_ != -1 ? "TILE " + std::to_string(lightEditorTile_) : std::string("NO TILE");
+    if (pHover != nullptr) {
+        tileInfo += "   MOUSE " + std::to_string(pHover->id());
+    }
+    pFont->drawText(pos.x + 10, pos.y + 22, tileInfo, false);
+
+    std::string values[kLightEditorNbItems];
+    if (lightEditorTile_ != -1) {
+        MapLighting::TileSetting setting = map_renderer_.lighting().tileSetting(lightEditorTile_);
+        const char *kGlowNames[] = {"NONE", "BRIGHT", "FULL"};
+        const char *kLightNames[] = {"AUTO", "NONE", "ON"};
+        values[kLightEditorGlow] = kGlowNames[static_cast<int>(setting.glow)];
+        values[kLightEditorLight] = kLightNames[static_cast<int>(setting.light)];
+        values[kLightEditorRadius] = setting.radius == 0 ? std::string("AUTO") : std::to_string(setting.radius);
+        int colourIndex = lightColourIndex(setting);
+        values[kLightEditorColour] = !setting.hasColour ? std::string("AUTO") :
+                colourIndex != -1 ? std::string(kLightColours[colourIndex].name) : std::string("CUSTOM");
+        if (setting.hasColour) {
+            int y = pos.y + kLightEditorItemsY + kLightEditorColour * kLightEditorItemHeight;
+            g_System.drawFillRect({pos.x + kLightEditorWidth - 26, y + 1}, 14, 10, setting.colour);
+        }
+    }
+    const char *kLabels[kLightEditorNbItems] = {"GLOW", "LIGHT", "RADIUS", "COLOUR", "SAVE", "CLOSE"};
+    for (int i = 0; i < kLightEditorNbItems; i++) {
+        int y = pos.y + kLightEditorItemsY + i * kLightEditorItemHeight;
+        bool lighted = i == lightEditorHover_;
+        pFont->drawText(pos.x + 10, y, kLabels[i], lighted);
+        if (!values[i].empty()) {
+            pFont->drawText(pos.x + 90, y, values[i], lighted);
+        }
+    }
+    int y = pos.y + kLightEditorItemsY + kLightEditorNbItems * kLightEditorItemHeight + 4;
+    pFont->drawText(pos.x + 10, y, lightEditorStatus_, false);
+    pFont->drawText(pos.x + 10, y + 16, "LEFT OR RIGHT CLICK", false);
+}
+
 void GameplayMenu::drawPausePanel() {
     std::string str_paused = getMessage("GAME_PAUSED");
     fs_eng::MenuFont *font_used = getMenuFont(fs_eng::FontManager::SIZE_1);
     int txt_width = font_used->textWidth(str_paused);
-    int txt_posx = fs_eng::kScreenWidth / 2 - txt_width / 2;
+    // In the middle of the map
+    int txt_posx = MapRenderer::kGameplayPanelWidth + mapAreaWidth() / 2 - txt_width / 2;
     int txt_height = font_used->textHeight(false);
     int txt_posy = fs_eng::kScreenHeight / 2 - txt_height / 2;
 
@@ -1249,6 +2023,24 @@ void GameplayMenu::drawWeaponSelectors() {
  * \param addToGroup If true, agent is added to the current selection.
  * If not, the selection is emptied and filled with the new agent.
  */
+void GameplayMenu::handleAgentKey(size_t agentNo, bool ctrl) {
+    uint32_t now = g_System.getTicks();
+    bool doublePress = !ctrl && lastAgentKey_ == static_cast<int>(agentNo) &&
+                        now - lastAgentKeyTicks_ <= kDoublePressDelay;
+
+    selectAgent(agentNo, ctrl);
+
+    fs_knl::PedInstance *pAgent = mission_->getSquad()->member(agentNo);
+    if (doublePress && pAgent && pAgent->isAlive()) {
+        centerViewOnPed(pAgent);
+        // A third press starts a new double press
+        lastAgentKey_ = -1;
+    } else {
+        lastAgentKey_ = static_cast<int>(agentNo);
+    }
+    lastAgentKeyTicks_ = now;
+}
+
 void GameplayMenu::selectAgent(size_t agentNo, bool addToGroup) {
     // TODO: when agent deselected and he was shooting, he should stop
     if (selection_.selectAgent(agentNo, addToGroup)) {

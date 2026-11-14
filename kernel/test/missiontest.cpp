@@ -188,3 +188,61 @@ TEST_CASE( "Mission", "[kernel][mission]" ) {
         }
     }
 }
+
+/*!
+ * Creates a ped standing on tile (tx, 10, 1) of the given group.
+ */
+fs_knl::PedInstance *addPedForShooting(fs_knl::Mission &mission, int id, int tx, unsigned int groupId) {
+    fs_knl::PedInstance *pPed = new fs_knl::PedInstance(id, nullptr, fs_knl::PedInstance::kPedTypeAgent, groupId == 1, 128);
+    pPed->setSize(32, 32, 256);
+    pPed->setStartHealth(10, true);
+    pPed->setPosition(tx, 10, 1, 128, 128, 0);
+    pPed->setObjGroupID(groupId);
+    mission.addPed(pPed);
+    return pPed;
+}
+
+/*!
+ * Returns the first object blocking a shot from the shooter's weapon
+ * toward the middle of the target.
+ */
+fs_knl::MapObject *firstObjectHit(fs_knl::Mission &mission, fs_knl::PedInstance *pShooter, fs_knl::PedInstance *pTarget) {
+    fs_knl::WorldPoint originW(pShooter->position());
+    originW.z += pShooter->sizeZ() >> 1;
+    fs_knl::WorldPoint targetW(pTarget->position());
+    targetW.z += pTarget->sizeZ() >> 1;
+    // aim a bit behind the target so the line goes through it
+    targetW.x += 64;
+    double dist = originW.x < targetW.x ? targetW.x - originW.x : originW.x - targetW.x;
+
+    return mission.checkBlockedByObject(&originW, &targetW, &dist, pShooter);
+}
+
+TEST_CASE( "Friendly fire", "[kernel][mission]" ) {
+    LevelData::MapInfos mapInfos;
+    fs_knl::Mission cut(mapInfos, nullptr);
+
+    // All peds stand on the same line, along X. 1 tile = 256.
+    fs_knl::PedInstance *pShooter = addPedForShooting(cut, 1, 10, 1);
+
+    SECTION( "a friend close to the shooter does not block the shot") {
+        addPedForShooting(cut, 2, 11, 1);  // friend 1 tile away
+        fs_knl::PedInstance *pEnemy = addPedForShooting(cut, 3, 16, 2);
+
+        REQUIRE( firstObjectHit(cut, pShooter, pEnemy) == pEnemy );
+    }
+
+    SECTION( "a friend far from the shooter blocks the shot") {
+        fs_knl::PedInstance *pFriend = addPedForShooting(cut, 2, 13, 1);  // friend 3 tiles away
+        fs_knl::PedInstance *pEnemy = addPedForShooting(cut, 3, 16, 2);
+
+        REQUIRE( firstObjectHit(cut, pShooter, pEnemy) == pFriend );
+    }
+
+    SECTION( "an enemy close to the shooter blocks the shot") {
+        fs_knl::PedInstance *pCloseEnemy = addPedForShooting(cut, 2, 11, 2);
+        fs_knl::PedInstance *pEnemy = addPedForShooting(cut, 3, 16, 2);
+
+        REQUIRE( firstObjectHit(cut, pShooter, pEnemy) == pCloseEnemy );
+    }
+}

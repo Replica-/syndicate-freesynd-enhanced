@@ -99,6 +99,11 @@ public:
 
     void handleTick(uint32_t elapsed);
 
+    //! Returns the minimum time between two ticks for the current menu
+    uint32_t frameInterval();
+    //! How far the current menu is moved to the right to be centred on a wide screen
+    int menuOffsetX();
+
     // Change the menu
     void gotoMenu(int menuId);
 

@@ -26,6 +26,7 @@
 #define SYSTEM_H
 
 #include <memory>
+#include <string>
 
 #include "fs-utils/common.h"
 #include "fs-utils/misc/singleton.h"
@@ -44,7 +45,8 @@ enum FS_EventType {
     EVT_MSE_MOTION = 2,    // Mouse motion
     EVT_MSE_UP = 3,
     EVT_MSE_DOWN = 4,
-    EVT_KEY_DOWN = 5
+    EVT_KEY_DOWN = 5,
+    EVT_MSE_WHEEL = 6
 };
 
 /** The "quit requested" event */
@@ -72,6 +74,13 @@ struct FS_KeyEvent {
     int keyMods;
 };
 
+struct FS_MouseWheelEvent {
+    FS_EventType type;    /**< EVT_MSE_WHEEL */
+    int32_t x, y;    /**< The X/Y coordinates of the mouse */
+    int32_t delta;    /**< Positive when the wheel is moved away from the user */
+    int keyMods;
+};
+
 /** General event structure */
 union FS_Event {
     FS_EventType type;
@@ -80,6 +89,7 @@ union FS_Event {
     FS_MouseMotionEvent motion;
     FS_MouseButtonEvent button;
     FS_KeyEvent key;
+    FS_MouseWheelEvent wheel;
 };
 
 /*!
@@ -91,7 +101,9 @@ public:
 
     virtual ~System() {}
 
-    virtual void initialize(bool fullscreen) = 0;
+    virtual void initialize(bool fullscreen, bool hardwareRendering) = 0;
+    //! Saves what has been rendered so far in a PNG file
+    virtual bool saveScreenshot(const std::string &path) = 0;
 
     // Display an error message in a visible way for the user
     virtual void showError(const char *errorMsg) = 0;
@@ -109,6 +121,22 @@ public:
     virtual bool pumpEvents(FS_Event &evtOut) = 0;
     virtual void delay(uint32_t msec) = 0;
     virtual uint32_t getTicks() = 0;
+    //! Returns true if the given key is currently held down (only letters and arrows)
+    virtual bool isKeyDown(FS_KeyCode key) = 0;
+    //! True if the game is displayed on the whole screen
+    virtual bool isFullScreen() = 0;
+    /*!
+     * Width of the screen in pixels : kScreenWidth, or more in hardware mode when the
+     * window is wider (a wide screen in fullscreen). The height is always kScreenHeight.
+     */
+    virtual int screenWidth() = 0;
+    /*!
+     * Moves what's drawn next to the right by the given number of pixels : a screen
+     * drawn for kScreenWidth is centred on a wider screen with this.
+     */
+    virtual void setDrawOffsetX(int offsetX) = 0;
+    //! Switches between fullscreen and window
+    virtual void setFullScreen(bool fullscreen) = 0;
 
     //! Draw a point on the screen at given position and color
     virtual void drawPoint (Point2D start, fs_eng::FSColor color) = 0;
@@ -140,6 +168,11 @@ public:
      * @param color Color to fill the rectangle
      */
     virtual void drawFillRect(Point2D pos, int width, int height, fs_eng::FSColor color) = 0;
+    /*!
+     * Draws a filled convex polygon, blended with what is already drawn using
+     * the alpha of the given color.
+     */
+    virtual void drawFillPolygon(const Point2D *points, int nbPoints, fs_eng::FSColor color) = 0;
 
     //! Returns the mouse pointer coordinates
     virtual uint32_t getMousePos(Point2D &point) = 0;

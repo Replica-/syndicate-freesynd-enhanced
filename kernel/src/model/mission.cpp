@@ -30,6 +30,7 @@
 #include <assert.h>
 #include <string>
 #include <random>
+#include <cmath>
 
 #include "fs-utils/log/log.h"
 #include "fs-engine/events/event.h"
@@ -40,7 +41,7 @@
 #include "fs-kernel/model/squad.h"
 
 namespace {
-    // Générateur de nombres aléatoires thread-safe
+    // GÃ©nÃ©rateur de nombres alÃ©atoires thread-safe
     thread_local std::mt19937 rng(std::random_device{}());
 }
 
@@ -49,6 +50,7 @@ namespace fs_knl {
 const uint8_t Mission::kBMaskBlockerTargetOutOfMap = 0x20;
 const uint8_t Mission::kBMaskBlockerTargetObjectUpdated = 0x02;
 const uint8_t Mission::kBMaskBlockerTargetPosUpdated = 0x04;
+const int32_t Mission::kFriendlyFireSafeDistance = 512;
 
 /*!
  * Initialize the statistics.
@@ -286,7 +288,69 @@ void Mission::start(WeaponManager& weaponMgr) {
  * @param elapsed 
  * @param diff 
  */
+//! Number of drops of blood for one hit
+const int kBloodDropsPerHit = 18;
+//! Speed of the drops, in world units per ms (a tile is 256)
+const double kBloodSpeed = 1.2;
+//! Gravity applied to the drops, in world units per ms²
+const double kBloodGravity = 0.006;
+//! How long a drop stays, in ms
+const int kBloodDropLife = 350;
+
+void Mission::addBloodSpray(const WorldPoint &impactW, const WorldPoint &originW, int floorZ) {
+    // Direction of the shot : the blood goes the same way, away from the shooter
+    double dx = impactW.x - originW.x;
+    double dy = impactW.y - originW.y;
+    double length = std::sqrt(dx * dx + dy * dy);
+    if (length < 1.0) {
+        return;
+    }
+    dx /= length;
+    dy /= length;
+
+    for (int i = 0; i < kBloodDropsPerHit; i++) {
+        // Each drop spreads a bit sideways and goes up a little before falling
+        double spread = ((rand() % 201) - 100) / 250.0;
+        double speed = kBloodSpeed * (0.4 + (rand() % 61) / 100.0);
+        BloodDrop drop;
+        drop.x = impactW.x;
+        drop.y = impactW.y;
+        drop.z = impactW.z;
+        drop.vx = (dx - dy * spread) * speed;
+        drop.vy = (dy + dx * spread) * speed;
+        drop.vz = (rand() % 100) / 100.0 * 0.6;
+        drop.floorZ = floorZ;
+        drop.life = kBloodDropLife - rand() % 120;
+        drop.maxLife = drop.life;
+        bloodDrops_.push_back(drop);
+    }
+}
+
+void Mission::updateBloodDrops(uint32_t elapsed) {
+    for (auto it = bloodDrops_.begin(); it != bloodDrops_.end(); ) {
+        BloodDrop &drop = *it;
+        drop.life -= elapsed;
+        if (drop.life <= 0) {
+            it = bloodDrops_.erase(it);
+            continue;
+        }
+        if (drop.z > drop.floorZ) {
+            drop.x += drop.vx * elapsed;
+            drop.y += drop.vy * elapsed;
+            drop.z += drop.vz * elapsed;
+            drop.vz -= kBloodGravity * elapsed;
+            if (drop.z < drop.floorZ) {
+                // The drop has landed on the floor : it stays there until it disappears
+                drop.z = drop.floorZ;
+            }
+        }
+        ++it;
+    }
+}
+
 void Mission::handleTick(uint32_t elapsed, uint32_t diff) {
+    updateBloodDrops(diff);
+
     for (auto it = sfx_objects_.begin(); it != sfx_objects_.end(); ) {
         auto& sfx = *it;
 
@@ -2328,10 +2392,18 @@ void Mission::clrSurfaces() {
  * \param mtp
  * \return True if walkable tile found
  */
-bool Mission::getWalkable(TilePoint &mtp) {
+bool Mission::isWalkable(int x, int y, int z) {
+    if (x < 0 || y < 0 || z < 0 || x >= mmax_x_ || y >= mmax_y_ || z >= mmax_z_) {
+        return false;
+    }
+    return (mdpoints_[x + y * mmax_x_ + z * mmax_m_xy].bfNodeDesc & m_fdWalkable) == m_fdWalkable;
+}
+
+bool Mission::getWalkable(TilePoint &mtp, int maxZ) {
     bool gotit = false;
     int bx, by, box, boy;
-    int bz = mmax_z_;
+    // the search goes down from this level
+    int bz = (maxZ >= 0 && maxZ + 1 < mmax_z_) ? maxZ + 1 : mmax_z_;
     unsigned int cindx;
     unsigned char twd;
     do {
@@ -2584,9 +2656,12 @@ MapObject * Mission::checkBlockedByObject(WorldPoint * pStartPt, WorldPoint * pE
     // if shooter is a Ped and is shooting from a vehicle,
     // then skip that vehicle in the search
     Vehicle *pShooterVehicle = NULL;
+    const PedInstance *pShooterPed = NULL;
+    WorldPoint shooterPosW;
     if (pOrigin && pOrigin->is(MapObject::kNaturePed)) {
-        const PedInstance *pPed = static_cast<const PedInstance *>(pOrigin);
-        pShooterVehicle = pPed->inVehicle(); // can be null
+        pShooterPed = static_cast<const PedInstance *>(pOrigin);
+        pShooterVehicle = pShooterPed->inVehicle(); // can be null
+        shooterPosW.convertFromTilePoint(pShooterPed->position());
     }
     for (unsigned int i = 0; i < vehicles_.size(); ++i) {
         Vehicle * pVehicle = vehicles_[i];
@@ -2610,6 +2685,12 @@ MapObject * Mission::checkBlockedByObject(WorldPoint * pStartPt, WorldPoint * pE
 
     for (PedInstance *pPed : peds_) {
         if (pPed->isAlive() && pPed != pOrigin && !pPed->isInVehicle()) {
+            // No friendly fire on a friend standing close to the shooter : in a
+            // group, peds shoot past each other. A friend further away can be hit.
+            if (pShooterPed && pPed->objGroupID() == pShooterPed->objGroupID() &&
+                    pPed->isCloseTo(shooterPosW, kFriendlyFireSafeDistance)) {
+                continue;
+            }
             if (pPed->isBlocker(&copyStartPt, &copyEndPt, inc_xyz)) {
                 int cx = pStartPt->x - copyStartPt.x;
                 int cy = pStartPt->y - copyStartPt.y;

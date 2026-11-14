@@ -140,6 +140,39 @@ void FSTextureSDL::renderFullTextureStrech(int destWidth, int destHeight) {
  * @param height Height of the new texture
  * @return true if creation is ok
  */
+void FSTextureSDL::renderScaled(Point2D src, int srcWidth, int srcHeight, Point2D dst, int dstWidth, int dstHeight) {
+    SDL_Rect srcQuad = { src.x, src.y, srcWidth, srcHeight };
+    SDL_Rect dstQuad = { dst.x, dst.y, dstWidth, dstHeight };
+    SDL_RenderCopy( pRenderer_, pTexture_, &srcQuad, &dstQuad );
+}
+
+void FSTextureSDL::renderRotated(Point2D dst, int dstWidth, int dstHeight, double angle, Point2D pivot) {
+    SDL_Rect dstQuad = { dst.x, dst.y, dstWidth, dstHeight };
+    SDL_Point center = { pivot.x, pivot.y };
+    SDL_RenderCopyEx( pRenderer_, pTexture_, nullptr, &dstQuad, angle, &center, SDL_FLIP_NONE );
+}
+
+void FSTextureSDL::setAlphaModulation(uint8_t alpha) {
+    SDL_SetTextureAlphaMod(pTexture_, alpha);
+}
+
+void FSTextureSDL::setBlendMode(BlendMode mode) {
+    switch (mode) {
+    case BlendMode::kAdd:
+        SDL_SetTextureBlendMode(pTexture_, SDL_BLENDMODE_ADD);
+        break;
+    case BlendMode::kMultiply:
+        SDL_SetTextureBlendMode(pTexture_, SDL_BLENDMODE_MOD);
+        break;
+    case BlendMode::kBlend:
+        SDL_SetTextureBlendMode(pTexture_, SDL_BLENDMODE_BLEND);
+        break;
+    default:
+        SDL_SetTextureBlendMode(pTexture_, SDL_BLENDMODE_NONE);
+        break;
+    }
+}
+
 bool FSTextureSDL::createStreamingTexture(int width, int height) {
     freeTexture();
     
@@ -193,14 +226,14 @@ bool FSTextureSDL::updateStreamingTexture(const uint8_t *pixels, const fs_eng::P
 void FSTextureSDL::createRenderTargetTexture(int width, int height) {
     freeTexture();
 
-    pTexture_ = SDL_CreateTexture(pRenderer_, SDL_PIXELFORMAT_RGBA8888, SDL_TEXTUREACCESS_TARGET, width, height);
+    pTexture_ = SDL_CreateTexture(pRenderer_, SDL_PIXELFORMAT_ARGB8888, SDL_TEXTUREACCESS_TARGET, width, height);
     if (pTexture_ == nullptr) {
         throw InitializationFailedException(std::format("Critical error, Could not create texture! SDL Error : %s", SDL_GetError()));
     }
 
     width_ = width;
     height_ = height;
-    pFormat_ = SDL_AllocFormat(SDL_PIXELFORMAT_RGBA8888);
+    pFormat_ = SDL_AllocFormat(SDL_PIXELFORMAT_ARGB8888);
 }
 
 /*!

@@ -22,6 +22,8 @@
  */
 
 #include "fs-engine/gfx/animationmanager.h"
+#include <algorithm>
+#include <climits>
 
 #include "fs-utils/io/file.h"
 #include "fs-utils/log/log.h"
@@ -121,7 +123,42 @@ void AnimationManager::drawSprite(int spriteId, const Point2D &screenPos) {
  * @param screenPos The position on the screen
  * @return 
  */
-bool AnimationManager::drawFrame(uint16_t animId, int frameId, const Point2D &screenPos)
+void AnimationManager::frameBounds(uint16_t animId, int frameId, const Point2D &screenPos, Point2D *pTopLeft, int *pWidth, int *pHeight) {
+    assert(animId < firstFramePerAnim_.size());
+
+    GameSpriteFrame *f = &frames_[firstFramePerAnim_[animId]];
+    while (frameId) {
+        f = &frames_[f->nextFrame];
+        frameId--;
+    }
+
+    int minX = INT_MAX, minY = INT_MAX, maxX = INT_MIN, maxY = INT_MIN;
+    GameSpriteFrameElement *e = &elements_[f->firstElement];
+    while (1) {
+        Sprite *pSprite = spritesManager_.sprite(e->sprite);
+        if (pSprite) {
+            minX = std::min(minX, screenPos.x + e->off_x);
+            minY = std::min(minY, screenPos.y + e->off_y);
+            maxX = std::max(maxX, screenPos.x + e->off_x + pSprite->width());
+            maxY = std::max(maxY, screenPos.y + e->off_y + pSprite->height());
+        }
+        if (e->nextElement == 0)
+            break;
+        e = &elements_[e->nextElement];
+    }
+
+    if (minX > maxX) {
+        *pTopLeft = screenPos;
+        *pWidth = 0;
+        *pHeight = 0;
+    } else {
+        *pTopLeft = {minX, minY};
+        *pWidth = maxX - minX;
+        *pHeight = maxY - minY;
+    }
+}
+
+bool AnimationManager::drawFrame(uint16_t animId, int frameId, const Point2D &screenPos, const fs_eng::FSColor *pTint)
 {
     assert(animId < firstFramePerAnim_.size());
 
@@ -137,6 +174,9 @@ bool AnimationManager::drawFrame(uint16_t animId, int frameId, const Point2D &sc
     GameSpriteFrameElement *e = &elements_[f->firstElement];
     while (1) {
         spritesManager_.drawSprite(e->sprite, screenPos.x + e->off_x, screenPos.y + e->off_y, e->flipped);
+        if (pTint && spritesManager_.hasTintMask(e->sprite)) {
+            spritesManager_.drawSpriteTint(e->sprite, screenPos.x + e->off_x, screenPos.y + e->off_y, e->flipped, *pTint);
+        }
         if (e->nextElement == 0)
             break;
         e = &elements_[e->nextElement];

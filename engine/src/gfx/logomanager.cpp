@@ -25,8 +25,11 @@
 
 #include "fs-engine/gfx/logomanager.h"
 
+#include <climits>
+
 #include "fs-utils/log/log.h"
 #include "fs-utils/io/file.h"
+#include "fs-engine/appcontext.h"
 #include "fs-engine/system/system.h"
 
 namespace fs_eng {
@@ -41,6 +44,26 @@ fs_eng::PaletteMenuColorIndex g_Colours[8] = {
     fs_eng::kMenuPaletteColorLightBrown,
     fs_eng::kMenuPaletteColorDarkBlue
  };
+
+//! Company colors added in hardware mode, after the original ones
+const fs_eng::FSColor g_ExtraColours[] = {
+    {200,  20,  40, 255},   // Crimson
+    {255,  40, 130, 255},   // Hot pink
+    {255, 140, 190, 255},   // Pink
+    {220,  40, 200, 255},   // Magenta
+    {130,  40, 200, 255},   // Purple
+    {180, 120, 255, 255},   // Lavender
+    { 90, 170, 255, 255},   // Sky blue
+    { 40, 220, 230, 255},   // Cyan
+    {  0, 150, 150, 255},   // Teal
+    {120, 240, 190, 255},   // Mint
+    { 20, 170,  80, 255},   // Emerald
+    {150, 230,  40, 255},   // Lime
+    {240, 190,  30, 255},   // Gold
+    {240, 240, 240, 255},   // White
+    {160, 165, 175, 255},   // Silver
+    { 60,  60,  70, 255}    // Charcoal
+};
 
 const int LogoManager::kMaxColour = 8;
 const int LogoManager::kLogoBigWidth = 32;
@@ -109,6 +132,8 @@ void LogoManager::loadLogos(const fs_eng::Palette &palette) {
         throw InitializationFailedException("Could not load texture");
     }
     
+    loadColours(palette);
+
     LOG(Log::k_FLG_GFX, "LogoManager", "loadLogos", ("%i logos loaded", numberLogo_))
 }
 
@@ -155,6 +180,52 @@ uint8_t LogoManager::getColorAtIndex(int colourIdx) {
     return g_Colours[colourIdx];
 }
 
+void LogoManager::loadColours(const fs_eng::Palette &palette) {
+    colours_.clear();
+    for (int i = 0; i < kMaxColour; i++) {
+        fs_eng::FSColor color = palette[g_Colours[i]];
+        color.a = 255;
+        colours_.push_back(color);
+    }
+    if (g_Ctx.isHardwareRendering()) {
+        for (const fs_eng::FSColor &color : g_ExtraColours) {
+            colours_.push_back(color);
+        }
+    }
+}
+
+int LogoManager::closestOriginalColour(int colourIdx) {
+    const fs_eng::FSColor &target = g_ExtraColours[colourIdx - kMaxColour];
+    int closest = 0;
+    int closestDistance = INT_MAX;
+    for (int i = 0; i < kMaxColour; i++) {
+        int dr = colours_[i].r - target.r;
+        int dg = colours_[i].g - target.g;
+        int db = colours_[i].b - target.b;
+        int distance = dr * dr + dg * dg + db * db;
+        if (distance < closestDistance) {
+            closestDistance = distance;
+            closest = i;
+        }
+    }
+    return closest;
+}
+
+/*!
+ * Returns the RGB value of a company color.
+ * \param colourIdx Index of the color. A color only available in hardware mode
+ * is replaced by the closest original color in software mode.
+ */
+fs_eng::FSColor LogoManager::getColour(int colourIdx) {
+    const int numExtra = static_cast<int>(sizeof(g_ExtraColours) / sizeof(g_ExtraColours[0]));
+    if (colourIdx < 0 || colourIdx >= kMaxColour + numExtra) {
+        colourIdx = 0;
+    } else if (colourIdx >= numColours()) {
+        colourIdx = closestOriginalColour(colourIdx);
+    }
+    return colours_[colourIdx];
+}
+
 int LogoManager::numLogos()
 {
     return numberLogo_;
@@ -164,15 +235,11 @@ int LogoManager::numLogos()
  * Draw a logo at the given position and with the given color
  * @param pos Coordinate on screen where to draw the logo
  * @param logoId Id of the logo to draw
- * @param colourId Id of the color in the g_Colours array
+ * @param colourId Id of the company color (see getColour())
  * @param big True to draw a 64x64 logo. Else it will be 32x32
  */
 void LogoManager::draw(Point2D pos, int logoId, int colorId, bool big) {
-    fs_eng::FSColor color;
-    if (colorId > kMaxColour || !logosTexture_->getColorFromPalette(g_Colours[colorId], color)) {
-        FSERR(Log::k_FLG_GFX, "LogoManager", "draw", ("Could not get color at index %i", colorId))
-        return;
-    }
+    fs_eng::FSColor color = getColour(colorId);
     // In both case, first we draw a background of the given color
     // and then on top the logo
     if (big) {

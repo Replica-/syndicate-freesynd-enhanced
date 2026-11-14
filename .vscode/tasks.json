@@ -1,38 +1,30 @@
 {
-    // Build tasks run through the CMake Tools extension, which sets up the
-    // MSVC developer environment (cl.exe, ninja) required by the presets.
-    // Without VS Code, use dev\build.cmd instead.
+    // Build tasks run dev\build.cmd, which sets up the MSVC developer environment
+    // and finds Conan itself. So they work even if VS Code was started before
+    // Conan or Visual Studio were added to the PATH.
     "version": "2.0.0",
     "tasks": [
         {
             "label": "Build Debug",
-            "type": "cmake",
-            "command": "build",
-            "preset": "build-ninja-msvc-x64-debug",
+            "type": "shell",
+            "command": "dev\\build.cmd debug",
+            "options": {
+                "cwd": "${workspaceFolder}",
+                "shell": { "executable": "cmd.exe", "args": ["/d", "/c"] }
+            },
             "group": { "kind": "build", "isDefault": true },
             "problemMatcher": ["$msCompile"]
         },
         {
             "label": "Build Release",
-            "type": "cmake",
-            "command": "build",
-            "preset": "build-ninja-msvc-x64-release",
+            "type": "shell",
+            "command": "dev\\build.cmd release",
+            "options": {
+                "cwd": "${workspaceFolder}",
+                "shell": { "executable": "cmd.exe", "args": ["/d", "/c"] }
+            },
             "group": "build",
             "problemMatcher": ["$msCompile"]
-        },
-        {
-            "label": "Configure Debug",
-            "type": "cmake",
-            "command": "configure",
-            "preset": "ninja-msvc-x64-debug",
-            "problemMatcher": []
-        },
-        {
-            "label": "Configure Release",
-            "type": "cmake",
-            "command": "configure",
-            "preset": "ninja-msvc-x64-release",
-            "problemMatcher": []
         }
     ]
 }

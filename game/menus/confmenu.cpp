@@ -34,6 +34,22 @@
 
 using fs_eng::FontManager;
 
+//! The picker shows all the colours and logos under the colour and logo panel
+const Point2D kPickerPos = {282, 156};
+const int kPickerWidth = 324;
+const int kPickerHeight = 178;
+//! Colour swatches
+const int kColoursPerRow = 12;
+const Point2D kColoursPos = {287, 160};
+const int kColourWidth = 22;
+const int kColourHeight = 14;
+const int kColourStepX = 26;
+const int kColourStepY = 18;
+//! Logos, drawn at their normal size
+const int kLogosPerRow = 10;
+const Point2D kLogosPos = {284, 200};
+const int kLogoSize = 32;
+
 ConfMenu::ConfMenu(fs_eng::MenuManager *m) :
         fs_eng::Menu(m, fs_game_menus::kMenuIdConf, fs_game_menus::kMenuIdMain, true) {
     isCachable_ = false;
@@ -93,6 +109,7 @@ void ConfMenu::handleRender() {
     if (currPanel_ == kConfPanelLogo) {
         // Draw the selected logo
         g_LogoMgr.draw({336, 55}, tempLogo_, tempColourId_, true);
+        drawPicker();
     } else if (currPanel_ == kConfPanelPlayerCompanyName || currPanel_ == kConfPanelPlayerName) {
         // draw a frame around the textfield
         g_System.drawRect({300, 77}, 272, 26, menu_manager_->kMenuColorDarkGreen);
@@ -106,6 +123,67 @@ void ConfMenu::handleRender() {
         g_System.drawRect({468, 122}, 136, 26, menu_manager_->kMenuColorDarkGreen);
         g_System.drawRect({469, 123}, 134, 24, menu_manager_->kMenuColorDarkGreen);
     }
+}
+
+void ConfMenu::drawPicker() {
+    g_System.drawRect(kPickerPos, kPickerWidth, kPickerHeight, menu_manager_->kMenuColorDarkGreen);
+    g_System.drawRect({kPickerPos.x + 1, kPickerPos.y + 1}, kPickerWidth - 2, kPickerHeight - 2, menu_manager_->kMenuColorDarkGreen);
+
+    for (int i = 0; i < g_LogoMgr.numColours(); i++) {
+        Point2D pos = {kColoursPos.x + (i % kColoursPerRow) * kColourStepX, kColoursPos.y + (i / kColoursPerRow) * kColourStepY};
+        g_System.drawFillRect(pos, kColourWidth, kColourHeight, g_LogoMgr.getColour(i));
+        if (i == tempColourId_) {
+            g_System.drawRect({pos.x - 2, pos.y - 2}, kColourWidth + 4, kColourHeight + 4, menu_manager_->kMenuColorWhite);
+        }
+    }
+
+    // Logos are drawn with the selected colour so the result can be seen
+    for (int i = 0; i < g_LogoMgr.numLogos(); i++) {
+        Point2D pos = {kLogosPos.x + (i % kLogosPerRow) * kLogoSize, kLogosPos.y + (i / kLogosPerRow) * kLogoSize};
+        g_LogoMgr.draw(pos, i, tempColourId_, false);
+    }
+    // The outline of the selected logo is drawn last so it's not covered by its neighbours
+    Point2D selected = {kLogosPos.x + (tempLogo_ % kLogosPerRow) * kLogoSize, kLogosPos.y + (tempLogo_ / kLogosPerRow) * kLogoSize};
+    g_System.drawRect(selected, kLogoSize, kLogoSize, menu_manager_->kMenuColorWhite);
+}
+
+int ConfMenu::colourAt(Point2D point) {
+    int col = (point.x - kColoursPos.x) / kColourStepX;
+    int row = (point.y - kColoursPos.y) / kColourStepY;
+    if (point.x < kColoursPos.x || point.y < kColoursPos.y || col >= kColoursPerRow ||
+            (point.x - kColoursPos.x) % kColourStepX >= kColourWidth ||
+            (point.y - kColoursPos.y) % kColourStepY >= kColourHeight) {
+        return -1;
+    }
+    int index = row * kColoursPerRow + col;
+    return index < g_LogoMgr.numColours() ? index : -1;
+}
+
+int ConfMenu::logoAt(Point2D point) {
+    int col = (point.x - kLogosPos.x) / kLogoSize;
+    int row = (point.y - kLogosPos.y) / kLogoSize;
+    if (point.x < kLogosPos.x || point.y < kLogosPos.y || col >= kLogosPerRow) {
+        return -1;
+    }
+    int index = row * kLogosPerRow + col;
+    return index < g_LogoMgr.numLogos() ? index : -1;
+}
+
+bool ConfMenu::handleMouseDown(Point2D point, [[maybe_unused]] int button) {
+    if (currPanel_ != kConfPanelLogo) {
+        return false;
+    }
+    int colour = colourAt(point);
+    if (colour != -1) {
+        tempColourId_ = colour;
+        return true;
+    }
+    int logo = logoAt(point);
+    if (logo != -1) {
+        tempLogo_ = logo;
+        return true;
+    }
+    return false;
 }
 
 bool ConfMenu::handleBeforeShow() {
@@ -132,11 +210,11 @@ void ConfMenu::handleAction(const ActionDesc &action) {
         showCompanyNamePanel();
     } else if (action.id == leftColButId_) {
         tempColourId_--;
-        if (tempColourId_ < 0) {
-            tempColourId_ = g_LogoMgr.kMaxColour - 1;
+        if (tempColourId_ < 0 || tempColourId_ >= g_LogoMgr.numColours()) {
+            tempColourId_ = g_LogoMgr.numColours() - 1;
         }
     } else if (action.id == rightColButId_) {
-        tempColourId_ = (tempColourId_ + 1) % g_LogoMgr.kMaxColour;
+        tempColourId_ = (tempColourId_ + 1) % g_LogoMgr.numColours();
     } else if (action.id == leftLogoButId_) {
         tempLogo_--;
         if (tempLogo_ < 0 ) {

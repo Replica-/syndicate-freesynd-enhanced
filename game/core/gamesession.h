@@ -30,6 +30,7 @@
 #include "fs-utils/misc/singleton.h"
 #include "fs-utils/io/portablefile.h"
 #include "fs-utils/io/formatversion.h"
+#include "fs-engine/enginecommon.h"
 #include "fs-kernel/mgr/researchmanager.h"
 #include "fs-kernel/model/mission.h"
 #include "fs-kernel/model/time.h"
@@ -222,7 +223,9 @@ public:
     void setSelectedBlockId(uint8_t index) { if (index < 50) selected_blck_ = index; }
 
     //! Returns the block's color depending on who owns it
-    uint8_t get_owner_color(Block & blk);
+    fs_eng::FSColor get_owner_color(Block & blk);
+    //! Returns the color of the enemy syndicate that owns the given block
+    fs_eng::FSColor getEnemyColour(Block & blk);
 
     //! Update state when finishing a mission
     void mark_selected_block_completed();

@@ -23,6 +23,7 @@
 
 #include "fs-engine/appcontext.h"
 
+#include <algorithm>
 #include <locale>
 #include <format>
 
@@ -36,6 +37,10 @@ AppContext::AppContext() {
     time_for_click_ = 80;
     fullscreen_ = false;
     playIntro_ = true;
+    hardwareRendering_ = true;
+    missionPalette_ = 0;
+    timeOfDay_ = 0;
+    lighting_ = true;
     language_ = NULL;
     soundVolume_ = 0;
 }
@@ -120,6 +125,11 @@ void AppContext::readOrCreateUserConf(const std::string& userConfFolder) {
 
     fullscreen_ = userConf.read("fullscreen", false);
     playIntro_ = userConf.read("play_intro", true);
+    std::string renderMode = userConf.read<std::string>("render_mode", "hardware");
+    hardwareRendering_ = (renderMode != "software");
+    missionPalette_ = std::clamp(userConf.read("mission_palette", 0), 0, 5);
+    timeOfDay_ = std::clamp(userConf.read("time_of_day", 0), 0, 4);
+    lighting_ = userConf.read("lighting", true);
     test_files_ = userConf.read("test_data", true);
     soundVolume_ = userConf.read("sound_volume", 100);
     const int languageID = userConf.read("language", 0);
@@ -133,6 +143,7 @@ void AppContext::readOrCreateUserConf(const std::string& userConfFolder) {
         FSINFO(Log::k_FLG_IO, "AppContext", "readConfiguration", ("Initializing user configuration file in %s\n", userConfFullpath.string().c_str()));
         userConf.add("fullscreen", fullscreen_);
         userConf.add("play_intro", playIntro_);
+        userConf.add("render_mode", std::string(hardwareRendering_ ? "hardware" : "software"));
         userConf.add("test_data", test_files_);
         userConf.add("language", languageID);
         userConf.add("save_data_dir", saveDataDir);
@@ -264,6 +275,46 @@ void AppContext::updateSoundVolume(int volume) {
     LOG(Log::k_FLG_IO, "AppContext", "updateSoundVolume", ("Updating sound volume to %d in %s", volume, userConfPath.c_str()))
     ConfigFile conf(userConfPath.string());
     conf.add("sound_volume", volume);
+
+    updateUserConf(conf, userConfPath);
+}
+
+void AppContext::updateMissionPalette(int paletteId) {
+    missionPalette_ = std::clamp(paletteId, 0, 5);
+    std::filesystem::path userConfPath;
+    fs_utl::File::getUserConfFullPath(userConfPath);
+    ConfigFile conf(userConfPath.string());
+    conf.add("mission_palette", missionPalette_);
+
+    updateUserConf(conf, userConfPath);
+}
+
+void AppContext::updateFullScreen(bool fullscreen) {
+    fullscreen_ = fullscreen;
+    std::filesystem::path userConfPath;
+    fs_utl::File::getUserConfFullPath(userConfPath);
+    ConfigFile conf(userConfPath.string());
+    conf.add("fullscreen", fullscreen_);
+
+    updateUserConf(conf, userConfPath);
+}
+
+void AppContext::updateLighting(bool lighting) {
+    lighting_ = lighting;
+    std::filesystem::path userConfPath;
+    fs_utl::File::getUserConfFullPath(userConfPath);
+    ConfigFile conf(userConfPath.string());
+    conf.add("lighting", lighting_);
+
+    updateUserConf(conf, userConfPath);
+}
+
+void AppContext::updateTimeOfDay(int timeOfDay) {
+    timeOfDay_ = std::clamp(timeOfDay, 0, 4);
+    std::filesystem::path userConfPath;
+    fs_utl::File::getUserConfFullPath(userConfPath);
+    ConfigFile conf(userConfPath.string());
+    conf.add("time_of_day", timeOfDay_);
 
     updateUserConf(conf, userConfPath);
 }

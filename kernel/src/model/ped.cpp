@@ -43,6 +43,11 @@ namespace fs_knl {
 const int PedInstance::kAgentMaxHealth = 16;
 const int PedInstance::kDefaultShootReactionTime = 200;
 const uint32_t PedInstance::kPlayerGroupId = 1;
+const std::vector<int> PedInstance::kAgentHeadSprites = {41, 42, 43, 44, 45, 46, 47, 48};
+const uint8_t PedInstance::kHatColourIndex = 6;
+bool PedInstance::useHatColours_ = false;
+fs_eng::FSColor PedInstance::playerHatColour_ = {0, 0, 0, 255};
+fs_eng::FSColor PedInstance::enemyHatColour_ = {0, 0, 0, 255};
 const int PedInstance::kAgentMaxSpeedWithOverweight = 64;
 
 PedInstance::PedInstance(uint16_t anId, Map *pMap, PedType pedType, bool isOur, int maxSpeed) :
@@ -614,7 +619,7 @@ void PedInstance::setEnergyActivated(bool isActivated) {
 
 bool isOnScreen(int scrollX, int scrollY, int x, int y) {
     return x >= scrollX && y >= scrollY
-            && x < scrollX + fs_eng::kScreenWidth - 129
+            && x < scrollX + g_System.screenWidth() - 129
             && y < scrollY + fs_eng::kScreenHeight;
 }
 
@@ -749,6 +754,44 @@ void PedInstance::playPersuadedAnimation() {
     animationPlayer_->play(animations_.persuadedAnimation);
 }
 
+void PedInstance::setAgentHatColours(const fs_eng::FSColor &playerColour, const fs_eng::FSColor &enemyColour) {
+    useHatColours_ = true;
+    playerHatColour_ = playerColour;
+    enemyHatColour_ = enemyColour;
+}
+
+void PedInstance::clearAgentHatColours() {
+    useHatColours_ = false;
+}
+
+/*!
+ * Returns the color of the hat if it must be recolored : agents of the player
+ * (including persuaded agents) in the company color, enemy agents in the color
+ * of their syndicate. Other peds keep their original color.
+ */
+const fs_eng::FSColor *PedInstance::hatColour() const {
+    if (!useHatColours_ || type_ != kPedTypeAgent) {
+        return nullptr;
+    }
+    return obj_group_id_ == kPlayerGroupId ? &playerHatColour_ : &enemyHatColour_;
+}
+
+//! How long a muzzle flash lasts in ms
+const uint32_t kMuzzleFlashDuration = 70;
+
+void PedInstance::showMuzzleFlash(fs_eng::FSColor colour) {
+    muzzleFlashTicks_ = g_System.getTicks();
+    muzzleFlashColour_ = colour;
+}
+
+bool PedInstance::hasMuzzleFlash(fs_eng::FSColor *pColour) {
+    if (muzzleFlashTicks_ == 0 || g_System.getTicks() - muzzleFlashTicks_ > kMuzzleFlashDuration) {
+        return false;
+    }
+    *pColour = muzzleFlashColour_;
+    return true;
+}
+
 void PedInstance::draw(const Point2D &screenPos) {
 
     // ensure on map
@@ -758,23 +801,24 @@ void PedInstance::draw(const Point2D &screenPos) {
     Weapon::WeaponAnimIndex weapon_idx =
         selectedWeapon() ? selectedWeapon()->index() : Weapon::Unarmed_Anim;
     Point2D posWithOffs = addOffs(screenPos);
+    const fs_eng::FSColor *pHatColour = hatColour();
 
     if (animationPlayer_->isCurrentAnimation(animations_.standAnimations[weapon_idx])) {
-        animationPlayer_->draw(posWithOffs, getDiscreteDirection());
+        animationPlayer_->draw(posWithOffs, getDiscreteDirection(), pHatColour);
     } else if (animationPlayer_->isCurrentAnimation(animations_.walkAnimations[weapon_idx])) {
-        animationPlayer_->draw(posWithOffs, getDiscreteDirection());
+        animationPlayer_->draw(posWithOffs, getDiscreteDirection(), pHatColour);
     } else if (animationPlayer_->isCurrentAnimation(animations_.standShootAnimations[weapon_idx])) {
-        animationPlayer_->draw(posWithOffs, getDiscreteDirection());
+        animationPlayer_->draw(posWithOffs, getDiscreteDirection(), pHatColour);
     } else if (animationPlayer_->isCurrentAnimation(animations_.walkShootAnimations[weapon_idx])) {
-        animationPlayer_->draw(posWithOffs, getDiscreteDirection());
+        animationPlayer_->draw(posWithOffs, getDiscreteDirection(), pHatColour);
     } else if (animationPlayer_->isCurrentAnimation(animations_.hitAnimation)) {
         // There are only 4 animations for hit
-        animationPlayer_->draw(posWithOffs, getDiscreteDirection(4));
+        animationPlayer_->draw(posWithOffs, getDiscreteDirection(4), pHatColour);
     } else if (animationPlayer_->isCurrentAnimation(animations_.vaporizeAnimation)) {
         // There are only 4 animations for vaporized
-        animationPlayer_->draw(posWithOffs, getDiscreteDirection(4));
+        animationPlayer_->draw(posWithOffs, getDiscreteDirection(4), pHatColour);
     } else {
-        animationPlayer_->draw(posWithOffs, 0);
+        animationPlayer_->draw(posWithOffs, 0, pHatColour);
     }
 }
 
@@ -782,23 +826,24 @@ void PedInstance::drawSelectorAnim(const Point2D &screenPos) {
 
     Weapon::WeaponAnimIndex weapon_idx =
         selectedWeapon() ? selectedWeapon()->index() : Weapon::Unarmed_Anim;
+    const fs_eng::FSColor *pHatColour = hatColour();
 
     if (animationPlayer_->isCurrentAnimation(animations_.standAnimations[weapon_idx])) {
-        animationPlayer_->draw(screenPos, getDiscreteDirection());
+        animationPlayer_->draw(screenPos, getDiscreteDirection(), pHatColour);
     } else if (animationPlayer_->isCurrentAnimation(animations_.walkAnimations[weapon_idx])) {
-        animationPlayer_->draw(screenPos, getDiscreteDirection());
+        animationPlayer_->draw(screenPos, getDiscreteDirection(), pHatColour);
     } else if (animationPlayer_->isCurrentAnimation(animations_.standShootAnimations[weapon_idx])) {
-        animationPlayer_->draw(screenPos, getDiscreteDirection());
+        animationPlayer_->draw(screenPos, getDiscreteDirection(), pHatColour);
     } else if (animationPlayer_->isCurrentAnimation(animations_.walkShootAnimations[weapon_idx])) {
-        animationPlayer_->draw(screenPos, getDiscreteDirection());
+        animationPlayer_->draw(screenPos, getDiscreteDirection(), pHatColour);
     } else if (animationPlayer_->isCurrentAnimation(animations_.hitAnimation)) {
         // There are only 4 animations for hit
-        animationPlayer_->draw(screenPos, getDiscreteDirection(4));
+        animationPlayer_->draw(screenPos, getDiscreteDirection(4), pHatColour);
     } else if (animationPlayer_->isCurrentAnimation(animations_.vaporizeAnimation)) {
         // There are only 4 animations for vaporized
-        animationPlayer_->draw(screenPos, getDiscreteDirection(4));
+        animationPlayer_->draw(screenPos, getDiscreteDirection(4), pHatColour);
     } else {
-        animationPlayer_->draw(screenPos, 0);
+        animationPlayer_->draw(screenPos, 0, pHatColour);
     }
 }
 

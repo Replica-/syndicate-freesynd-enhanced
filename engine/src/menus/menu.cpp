@@ -451,6 +451,11 @@ void Menu::mouseUpEvent(Point2D point, int button)
     handleMouseUp(point, button);
 }
 
+void Menu::mouseWheelEvent(Point2D point, int delta)
+{
+    handleMouseWheel(point, delta);
+}
+
 MenuFont * Menu::getMenuFont(FontManager::EFontSize size) {
     return menu_manager_->fonts().getMenuFont(size);
 }

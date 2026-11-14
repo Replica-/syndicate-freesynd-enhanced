@@ -139,6 +139,11 @@ public:
 
     //! Return whether this menu needs a background snapshot
     bool doNeedBackground() { return needBackground_; }
+    /*!
+     * True if the menu uses the whole width of a wide screen (System::screenWidth()).
+     * Other menus are drawn for kScreenWidth and centred.
+     */
+    virtual bool isWideScreen() { return false; }
 
     //! Handles key pressed
     void keyEvent(FS_Key key);
@@ -148,8 +153,19 @@ public:
     void mouseDownEvent(Point2D point, int button);
     //! Handles mouse button released
     void mouseUpEvent(Point2D point, int button);
+    //! Handles mouse wheel moved
+    void mouseWheelEvent(Point2D point, int delta);
 
     virtual bool handleTick([[maybe_unused]] uint32_t elapsed) { return true; }
+
+    //! Default minimum time in ms between two ticks of the game loop
+    static const uint32_t kDefaultFrameInterval = 30;
+    /*!
+     * Returns the minimum time in ms between two ticks of the game loop
+     * while this menu is displayed. Animated menus return a shorter interval
+     * so they are paced by the display.
+     */
+    virtual uint32_t frameInterval() { return kDefaultFrameInterval; }
 
     //! A structure to hold infos on the action to handle
     struct ActionDesc {
@@ -187,6 +203,8 @@ protected:
         */
     virtual bool handleMouseDown([[maybe_unused]] Point2D point, [[maybe_unused]] int button) { return false; }
     virtual void handleMouseUp([[maybe_unused]] Point2D point, [[maybe_unused]] int button) {}
+    //! delta is positive when the wheel is moved away from the user
+    virtual void handleMouseWheel([[maybe_unused]] Point2D point, [[maybe_unused]] int delta) {}
     virtual void handleMouseMotion([[maybe_unused]] Point2D point, [[maybe_unused]] uint32_t state) {}
     //! Handle key that where pressed but not assigned to any actions
     virtual bool handleUnMappedKey([[maybe_unused]] const FS_Key key) { return false;}

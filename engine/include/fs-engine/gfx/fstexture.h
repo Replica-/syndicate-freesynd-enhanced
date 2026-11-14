@@ -53,6 +53,27 @@ public:
     virtual void renderExtended(Point2D src, Point2D dst, int width, int height, int ratio, bool flipped) = 0;
     //! Render the full texture at 0,0 on screen with the given destination size
     virtual void renderFullTextureStrech(int width, int height) = 0;
+    //! How the texture is combined with what's already drawn
+    enum class BlendMode {
+        //! Replaces what's drawn
+        kNone,
+        //! Adds its colors to what's drawn
+        kAdd,
+        //! Multiplies what's drawn by its colors
+        kMultiply,
+        //! Replaces what's drawn where the texture is not transparent
+        kBlend
+    };
+    virtual void setBlendMode(BlendMode mode) = 0;
+    //! Opacity of the texture when it's drawn : from 0 (invisible) to 255 (opaque)
+    virtual void setAlphaModulation(uint8_t alpha) = 0;
+    //! Draws a part of the texture scaled to fill the destination rectangle
+    virtual void renderScaled(Point2D src, int srcWidth, int srcHeight, Point2D dst, int dstWidth, int dstHeight) = 0;
+    /*!
+     * Draws the whole texture scaled to the destination rectangle and rotated by the
+     * given angle in degrees (clockwise) around pivot, given relatively to dst.
+     */
+    virtual void renderRotated(Point2D dst, int dstWidth, int dstHeight, double angle, Point2D pivot) = 0;
     //! Return the color stored at given index in the palette store in this texture
     virtual bool getColorFromPalette(const int index, fs_eng::FSColor& color) = 0;
     //! Set a new palette for a existing surface.
@@ -60,8 +81,7 @@ public:
     //! Set a color in the palette
     virtual void setColorInPalette(int index, fs_eng::FSColor color) = 0;
     //! Set the color for color modulation
-    virtual void setColorModulation( fs_eng::FSColor color ) = 0;
-};
+    virtual void setColorModulation( fs_eng::FSColor color ) = 0;};
 
 }
 

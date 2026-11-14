@@ -44,6 +44,8 @@ public:
     bool handleBeforeShow() override;
     void handleRender() override;
     void handleLeave() override;
+    //! The map uses the whole width of a wide screen
+    bool isWideScreen() override { return true; }
 
 protected:
     /**
@@ -55,6 +57,10 @@ protected:
     void handleMouseMotion(Point2D point, uint32_t state) override;
     bool handleMouseDown(Point2D point, int button) override;
     void handleMouseUp(Point2D point, int button) override;
+    //! The mouse wheel zooms the map in hardware mode
+    void handleMouseWheel(Point2D point, int delta) override;
+    //! Converts a point on the screen into the map coordinates without zoom
+    Point2D unzoomPoint(Point2D point);
     //! Handles the user's click on weapon selector
     void handleClickOnWeaponSelector(Point2D point, int button);
     //! sets IPA level for defined agent, selector
@@ -100,7 +106,74 @@ protected:
     void drawMissionHint();
     void drawWeaponSelectors();
     void drawPausePanel();
+    //! Draws the map, zoomed in hardware mode
+    void renderMap();
+    /*!
+     * While the key B is held, buildings are see-through from the level of the
+     * selection leader : returns that level, or -1 when the view is normal.
+     */
+    int seeThroughLevel();
+    //! Shows a marker on the floor where the selection has been ordered to go
+    void showMoveMarker(const fs_knl::TilePoint &pos);
+    void drawMoveMarker();
+    //! Development : saves the sprites with the mission palette in a PNG file, death animations first
+    void exportSpriteSheet(const std::string &path);
+    //! Draws the menu opened with Escape
+    void drawEscMenu();
     ///@}
+
+    /**
+     * @name Menu opened with Escape during a mission : resume, time of day, abort
+     */
+    ///@{
+    //! Items of the menu
+    enum EscMenuItem {
+        kEscMenuResume = 0,
+        kEscMenuTimeOfDay = 1,
+        kEscMenuFullScreen = 2,
+        kEscMenuLighting = 3,
+        kEscMenuLightEditor = 4,
+        kEscMenuAbort = 5,
+        kEscMenuNbItems = 6
+    };
+    //! Opens or closes the menu. The game is paused while it's open
+    void showEscMenu(bool show);
+    //! Returns the item under the given point or -1
+    int escMenuItemAt(Point2D point);
+    void handleEscMenuClick(int item, int button);
+    //! Software mode : reloads the palette of the mission when the time of day is changed
+    void applyMissionPalette();
+    //! Hardware mode : computes the color grade of the map for the time of day
+    void applyTimeOfDay();
+    ///@}
+
+    /**
+     * @name Light editor (hardware mode), opened from the Escape menu : the game is paused,
+     * a click on the map selects a tile and the panel changes its lighting settings.
+     */
+    ///@{
+    //! Items of the panel
+    enum LightEditorItem {
+        kLightEditorGlow = 0,
+        kLightEditorLight = 1,
+        kLightEditorRadius = 2,
+        kLightEditorColour = 3,
+        kLightEditorSave = 4,
+        kLightEditorClose = 5,
+        kLightEditorNbItems = 6
+    };
+    void openLightEditor();
+    void closeLightEditor();
+    //! Returns the item of the panel under the given point, -1 if none, kLightEditorNbItems if on the panel
+    int lightEditorItemAt(Point2D point);
+    void handleLightEditorClick(Point2D point, int button);
+    //! Draws the outline of the tile under the mouse and of the selected tile, in the map texture
+    void drawLightEditorTiles();
+    void drawLightEditorPanel();
+    ///@}
+
+    //! Scrolls the view with the keys held down and the edges of the screen. Returns true if it moved
+    bool scrollView();
     
     //! Scroll the map horizontally.
     bool scrollOnX();
@@ -108,6 +181,15 @@ protected:
     bool scrollOnY();
     //void improveScroll(int &newScrollX, int &newScrollY);
     void initWorldCoords();
+    //! Limits of the view in tiles : the whole map in hardware mode, the mission area in software mode
+    int scrollMinX();
+    int scrollMaxX();
+    int scrollMinY();
+    int scrollMaxY();
+    //! Moves the view so the given ped is in the middle of the map
+    void centerViewOnPed(fs_knl::PedInstance *pPed);
+    //! Selects an agent with keys 1 to 4. Pressing the key twice centers the view on the agent
+    void handleAgentKey(size_t agentNo, bool ctrl);
     //! Selects/deselects an agent
     void selectAgent(size_t agentNo, bool addToGroup);
     //! Selects/deselects all agents
@@ -167,6 +249,45 @@ protected:
     fs_eng::Palette missionPalette_;
     /*! This renderer is in charge of drawing the map.*/
     MapRenderer map_renderer_;
+    /*!
+     * Hardware mode : the map is drawn in this texture, with the coordinates
+     * of the original game, then a part of it is scaled on screen for the zoom.
+     */
+    std::unique_ptr<fs_eng::FSTexture> pMapTexture_;
+    //! Maximum zoom of the map
+    static const double kMaxZoom;
+    //! Zoom of the map : 1 is the original size
+    double zoom_;
+    //! True when the menu opened with Escape is shown
+    bool escMenuShown_;
+    //! Item of the Escape menu under the mouse or -1
+    int escMenuHover_;
+    //! True if the game was paused (with P) before the Escape menu was opened
+    bool pausedBeforeEscMenu_;
+    //! True when the light editor is shown
+    bool lightEditor_ = false;
+    //! Id of the tile edited in the light editor or -1
+    int lightEditorTile_ = -1;
+    //! Item of the light editor panel under the mouse or -1
+    int lightEditorHover_ = -1;
+    //! Message shown at the bottom of the light editor panel
+    std::string lightEditorStatus_;
+    //! Where the last move order goes and when it was given (0 when no marker is shown)
+    fs_knl::TilePoint moveMarkerPos_;
+    uint32_t moveMarkerTicks_ = 0;
+    /*!
+     * Hardware mode : color grade of the map for the time of day. The map is drawn
+     * multiplied by gradeMultiply_, then gradeAdd_ times the map is added to brighten it.
+     */
+    fs_eng::FSColor gradeMultiply_;
+    fs_eng::FSColor gradeAdd_;
+    bool hasGradeAdd_;
+    //! Agent selected with the last key 1 to 4 (-1 if none) and when, to detect a double press
+    int lastAgentKey_;
+    uint32_t lastAgentKeyTicks_;
+    //! Top left corner of the part of the map shown when zoomed, in coordinates without zoom
+    double zoomOriginX_;
+    double zoomOriginY_;
     /*! This renderer is in charge of drawing the minimap.*/
     GamePlayMinimapRenderer mm_renderer_;
     /*! This renderer is in charge of drawing the IPA meters.*/

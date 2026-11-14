@@ -361,8 +361,7 @@ void MapMenu::buildMapOfCountriesPerColor() {
 
     for (int i = 0; i < GameSession::NB_MISSION; i++) {
         Block blk = g_Session.getBlock(i);
-        fs_eng::FSColor color;
-        getMenuManager()->getColorFromMenuPalette(g_Session.get_owner_color(blk), color);
+        fs_eng::FSColor color = g_Session.get_owner_color(blk);
 
         if (countriesPerColor_.contains(color)) {
             countriesPerColor_[color].push_back(i);

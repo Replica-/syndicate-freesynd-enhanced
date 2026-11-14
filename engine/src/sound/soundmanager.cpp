@@ -33,6 +33,9 @@
 
 namespace fs_eng {
 
+//! Volume of the menu transition sounds in hardware mode (percentage of their original volume)
+const int kTransitionSoundVolumePercent = 80;
+
 SoundManager::SoundManager():tabentry_startoffset_(58), tabentry_offset_(32)
 {
     volumeBeforeMute_ = -1;
@@ -66,6 +69,15 @@ void SoundManager::initialize(Audio* audio, bool disabled, bool doLoadIntroSound
     } else {
         // Always load ingame sounds
         loadSounds(SAMPLES_GAME);
+        if (g_Ctx.isHardwareRendering()) {
+            // Menu transitions are played more often as they are faster : make them quieter
+            for (size_t sample : {MENU_UP, MENU_CHANGE}) {
+                Sound *pSound = soundFromInGame(sample);
+                if (pSound) {
+                    pSound->setVolume(audio_->getMaxVolume() * kTransitionSoundVolumePercent / 100);
+                }
+            }
+        }
         if (doLoadIntroSounds) {
             loadSounds(SAMPLES_INTRO);
         }

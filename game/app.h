@@ -47,6 +47,8 @@ public:
 
     bool isForceIntro() const { return forceIntro_; }
 
+    bool isPlayMission() const { return playMission_; }
+
 protected:
     void addOptions(CLI::App &app) override;
 
@@ -72,6 +74,12 @@ private:
      * By default, the intro is only played once (see play_intro in user.conf).
      */
     bool forceIntro_;
+
+    /*!
+     * With "-m", starts the mission directly with the default squad instead of
+     * showing the briefing (option --play). Used for development.
+     */
+    bool playMission_;
 
 };
 

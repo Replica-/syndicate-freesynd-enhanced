@@ -25,6 +25,7 @@
 #define TILEMANAGER_H
 
 #include <memory>
+#include <vector>
 
 #include "fs-utils/common.h"
 #include "fs-engine/gfx/tile.h"
@@ -75,11 +76,26 @@ public:
     bool setPalette(int paletteId);
     //! Return the palette used by this tile manager
     fs_eng::Palette & getPalette() { return palette_; }
+    /*!
+     * Returns the palette index of a pixel of a tile, as it is drawn.
+     * x is from 0 to Tile::kTileWidth, y from 0 to Tile::kTileHeight.
+     * kTileColorKeyIndex is for a transparent pixel.
+     */
+    uint8_t pixelIndex(const Tile *pTile, int x, int y) {
+        Point2D loc = pTile->textureLocation();
+        return pixels_[(loc.y + y) * kNumOfTilesPerRow * Tile::kTileWidth + loc.x + x];
+    }
+    //! Index of the transparent color in the tiles
+    static const int kTileColorKeyIndex;
 
     //! Returns tile with the given index
     Tile * getTile(uint8 index);
     //! Draws the tile to the screen
     bool drawTile(const Tile *tile, int x, int y);
+    //! The next tiles are drawn with their colors multiplied by the given color (white for no change)
+    void setColorModulation(fs_eng::FSColor color) { tilesTexture_->setColorModulation(color); }
+    //! The next tiles are drawn with the given opacity (255 is opaque)
+    void setAlpha(uint8_t alpha) { tilesTexture_->setAlphaModulation(alpha); }
 
 protected:
     //! Load a given tile
@@ -92,12 +108,12 @@ protected:
     Tile::EType toTileType(uint8_t data);
 
 protected:
-    //! Index in the palette for the transparent color
-    static const int kTileColorKeyIndex;
     //! All the tiles in the game
     Tile **tiles_;
     //! A texture that store the tileset
     std::unique_ptr<FSTexture> tilesTexture_;
+    //! Palette indices of all the tiles, as in tilesTexture_
+    std::vector<uint8_t> pixels_;
     //! The palette used for the texture of tiles
     fs_eng::Palette palette_;
 };

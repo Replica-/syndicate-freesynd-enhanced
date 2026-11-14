@@ -38,12 +38,17 @@ namespace fs_eng {
 
 CliParam::CliParam() {
     disableSound_ = false;
+    softwareRendering_ = false;
 }
 
 int CliParam::parseCommandLine(int argc, char *argv[]) {
     CLI::App app;
 
     app.add_flag("-n,--nosound",disableSound_, "Disable sound");
+    app.add_flag("--software", softwareRendering_, "Use the original software rendering (for comparison with hardware mode).");
+    app.add_option("--screenshot", screenshotPath_, "Save the screen in the given PNG file, then quit (development).")->option_text("<file>");
+    app.add_option("--screenshot-delay", screenshotDelay_, "Time in ms before taking the screenshot (default 3000).")->option_text("<ms>");
+    app.add_option("--export-sprites", spriteExportPath_, "With -m and --play, save the sprites of the mission (death animations first) in the given PNG file, then quit (development).")->option_text("<file>");
     app.add_option("-i,--ini", iniPath_, "Specify the directory where to find the freesynd.ini config file.")->option_text("<path>");
 
     std::string desc = "Specify the directory where to find the user.conf file.";
@@ -120,6 +125,10 @@ bool BaseApp::initialize() {
         LOG(Log::k_FLG_INFO, "BaseApp", "initialize", ("App initialization started..."))
         const CliParam& param = getCliParam();
         context_->readConfiguration(param.getIniPath(), param.getUserConfDir());
+        if (param.isSoftwareRendering()) {
+            context_->setHardwareRendering(false);
+        }
+        context_->setSpriteExportPath(param.getSpriteExportPath());
 
         if (context_->isTestFiles()) {
             if (!fs_utl::File::testOriginalData()) {
@@ -129,7 +138,7 @@ bool BaseApp::initialize() {
             context_->deactivateTestFlag();
         }
 
-        system_->initialize(context_->isFullScreen());
+        system_->initialize(context_->isFullScreen(), context_->isHardwareRendering());
 
         menus_.initialize(isLoadIntroResources());
 
@@ -210,6 +219,8 @@ int BaseApp::run() {
 
     running_ = true;
     uint32_t lasttick = system_->getTicks();
+    const std::string screenshotPath = getCliParam().getScreenshotPath();
+    const uint32_t screenshotTick = lasttick + getCliParam().getScreenshotDelay();
     while (running_) {
         uint32_t curtick = system_->getTicks();
         uint32_t diff_ticks = curtick - lasttick;
@@ -219,14 +230,20 @@ int BaseApp::run() {
         while(system_->pumpEvents(fsEvt)) {
             menus_.handleEvent(fsEvt);
         }
-        if (diff_ticks < 30) {
-            system_->delay(30 - diff_ticks);
+        // Animated menus ask for a shorter interval so they are paced by the display
+        uint32_t frameInterval = menus_.frameInterval();
+        if (diff_ticks < frameInterval) {
+            system_->delay(frameInterval - diff_ticks);
             continue;
         }
         system_->clearScreen();
         menus_.handleTick(diff_ticks);
         menus_.renderMenu();
         lasttick = curtick;
+        if (!screenshotPath.empty() && curtick >= screenshotTick) {
+            system_->saveScreenshot(screenshotPath);
+            running_ = false;
+        }
         system_->updateScreen();
     }
 

@@ -50,13 +50,14 @@
 #include "menus/gamemenufactory.h"
 #include "menus/gamemenuid.h"
 
-GameCliParam::GameCliParam():startMission_(-1), cheatCodes_(""), forceIntro_(false) {}
+GameCliParam::GameCliParam():startMission_(-1), cheatCodes_(""), forceIntro_(false), playMission_(false) {}
 
 void GameCliParam::addOptions(CLI::App &app) {
     app.add_option("-m,--mission", startMission_, "Jump directly to the specified mission.")
         ->option_text("<id>")->check(CLI::Range(1, 50));
     app.add_option("-c,--cheat", cheatCodes_, "Set the list of cheatcodes separated by colon.")->option_text("<codes>");
     app.add_flag("--intro", forceIntro_, "Play the intro even if it has already been played.");
+    app.add_flag("--play", playMission_, "With -m, start the mission directly instead of showing the briefing.");
 }
 
 App::App()
@@ -136,7 +137,7 @@ int App::getStartMenuId() {
                 break;
             }
         }
-        // Then we go to the brief menu
-        return fs_game_menus::kMenuIdBrief;
+        // Then we go to the brief menu, or start the mission
+        return cliParam_.isPlayMission() ? fs_game_menus::kMenuIdLoading : fs_game_menus::kMenuIdBrief;
     }
 }

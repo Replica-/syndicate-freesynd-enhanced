@@ -75,7 +75,7 @@ public:
     //! Change the palette
     bool setPalette(const fs_eng::Palette &newPalette);
     void setColorModulation( fs_eng::FSColor color ) { spritesetTexture_->setColorModulation(color); }
-
+    void setBlendMode(FSTexture::BlendMode mode) { spritesetTexture_->setBlendMode(mode); }
     //! Return the sprite at given index
     Sprite *sprite(int spriteNum);
 
@@ -84,8 +84,20 @@ public:
 
     bool drawTexture(Point2D src, Point2D dst, int width, int height);
 
+    /*!
+     * Creates a mask to recolor the pixels of the given color index in the given
+     * sprites. The mask can then be drawn with any color, not limited by the palette.
+     */
+    bool createTintMask(const std::vector<int> &spriteIds, uint8_t colorIndex);
+    //! Returns true if the sprite has pixels in the tint mask
+    bool hasTintMask(int spriteNum) {
+        return spriteNum >= 0 && spriteNum < static_cast<int>(tintedSprites_.size()) && tintedSprites_[spriteNum];
+    }
+    //! Draws the tint mask of the sprite with the given color, on top of the sprite
+    void drawSpriteTint(int spriteNum, int x, int y, bool flipped, fs_eng::FSColor color);
+
 protected:
-    
+
     //! Load sprites from the given files
     bool loadSprites(const uint8_t * tabData, const uint8_t * spriteData, const fs_eng::Palette &palette);
     //! Sort tab entries from the tab file by height then width
@@ -106,6 +118,12 @@ protected:
     std::unique_ptr<FSTexture> spritesetTexture_;
     //! Size of the texture that holds the spriteset
     size_t textureWidth_;
+    //! Color indices of the spriteset, kept to build tint masks
+    std::vector<uint8_t> pixels_;
+    //! The pixels to recolor, in white (see createTintMask())
+    std::unique_ptr<FSTexture> tintTexture_;
+    //! Tells for each sprite if it has pixels in the tint mask
+    std::vector<bool> tintedSprites_;
 };
 }
 

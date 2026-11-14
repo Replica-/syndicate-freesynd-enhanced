@@ -28,6 +28,7 @@
 
 #include <map>
 #include <set>
+#include <vector>
 
 #include "fs-utils/common.h"
 #include "fs-engine/enginecommon.h"
@@ -99,6 +100,18 @@ public:
     static const uint32_t kPlayerGroupId;
     //! Maximum speed an agent has when he carries too much weight
     static const int kAgentMaxSpeedWithOverweight;
+    //! Sprites of the agents' heads : the only ones where the hat color is changed
+    static const std::vector<int> kAgentHeadSprites;
+    /*!
+     * Palette index of the agents' hat. It's the only index with the same color
+     * in all mission palettes, so it's not shaded by day or night.
+     */
+    static const uint8_t kHatColourIndex;
+
+    //! Draws the agents' hats with the given colors, not limited by the palette
+    static void setAgentHatColours(const fs_eng::FSColor &playerColour, const fs_eng::FSColor &enemyColour);
+    //! Draws the agents' hats with their original color
+    static void clearAgentHatColours();
     /*!
      * Type of Ped.
      */
@@ -209,6 +222,13 @@ public:
     void synchDrawnAnimWithActionState(void);
 
     void drawSelectorAnim(const Point2D &screenPos);
+    //! Returns the color for the hat of this ped or null to keep the original color
+    const fs_eng::FSColor *hatColour() const;
+
+    //! The ped has just fired : the flash of its weapon lights up the scene (hardware mode)
+    void showMuzzleFlash(fs_eng::FSColor colour);
+    //! True while the flash of the last shot is visible. pColour is set with its colour
+    bool hasMuzzleFlash(fs_eng::FSColor *pColour);
     //! Set state for ped (replace switchActionStateTo)
     void goToState(uint32_t as);
     //! Quit state for ped (replace switchActionStateFrom)
@@ -410,7 +430,7 @@ public:
     void setObjGroupID(unsigned int obj_group_id) {
         obj_group_id_ = obj_group_id;
     }
-    unsigned int objGroupID() { return obj_group_id_; }
+    unsigned int objGroupID() const { return obj_group_id_; }
 
     void setTimeBeforeCheck(int32_t tm) { tm_before_check_ = tm; }
     void setBaseModAcc(double mod_acc) { base_mod_acc_ = mod_acc; }
@@ -662,6 +682,15 @@ protected:
     UseWeaponAction *pUseWeaponAction_;
     //! The list of animations for the ped
     PedAnimations animations_;
+
+    //! When the last shot was fired (ticks of the system) and the colour of its flash
+    uint32_t muzzleFlashTicks_ = 0;
+    fs_eng::FSColor muzzleFlashColour_ = {0, 0, 0, 255};
+
+    //! True when agents' hats are drawn with playerHatColour_ and enemyHatColour_
+    static bool useHatColours_;
+    static fs_eng::FSColor playerHatColour_;
+    static fs_eng::FSColor enemyHatColour_;
     //! State of the ped
     uint32_t state_;
     // (pedDescStateMasks)

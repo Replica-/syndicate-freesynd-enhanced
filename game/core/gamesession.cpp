@@ -174,14 +174,18 @@ Block & GameSession::getSelectedBlock() {
  * else it's the syndicate given by Block.syndicate_owner.
  * \param blk The block to find the color.
  */
-uint8 GameSession::get_owner_color(Block & blk) {
+fs_eng::FSColor GameSession::get_owner_color(Block & blk) {
     switch (blk.status) {
     case BLK_FINISHED:
     case BLK_REBEL:
-        return g_LogoMgr.getColorAtIndex(getLogoColour());
+        return g_LogoMgr.getColour(getLogoColour());
     default:
-        return g_LogoMgr.getColorAtIndex(g_syndicate_color_id[blk.syndicate_owner]);
+        return g_LogoMgr.getColour(g_syndicate_color_id[blk.syndicate_owner]);
     }
+}
+
+fs_eng::FSColor GameSession::getEnemyColour(Block & blk) {
+    return g_LogoMgr.getColour(g_syndicate_color_id[blk.syndicate_owner]);
 }
 
 void GameSession::setLogoColour(int newColour) {

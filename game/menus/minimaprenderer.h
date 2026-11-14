@@ -151,6 +151,11 @@ public:
 
     //! Reset the class with a new mission
     void init(fs_knl::Mission *pMission, bool b_scannerEnabled, const fs_eng::Palette & palette);
+    //! Rebuilds the textures with a new palette, without changing the state of the minimap
+    void updatePalette(const fs_eng::Palette & palette) {
+        initMinimapTexture(palette);
+        initCircleTexture(palette);
+    }
 
     /*!
      * Sets the minimap center on the given object.

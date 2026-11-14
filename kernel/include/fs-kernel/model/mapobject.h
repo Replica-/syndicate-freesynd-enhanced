@@ -227,6 +227,9 @@ public:
     uint8_t getDiscreteDirection(int snum = 8);
     ///@}
 
+    //! Returns where the object is drawn for the given position of its tile on screen
+    Point2D drawPosition(const Point2D &screenPos) { return addOffs(screenPos); }
+
     /**
      * @name Path management
      */

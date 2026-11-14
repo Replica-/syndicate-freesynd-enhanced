@@ -140,8 +140,9 @@ bool SpriteManager::loadSprites(const uint8_t * tabData, const uint8_t * spriteD
     }
 
     // Then init texture with the buffer
+    pixels_.assign(spriteBuffer, spriteBuffer + textureWidth_ * textureWidth_);
     spritesetTexture_ = g_System.createTexture();
-    bool res = spritesetTexture_->create8bitsSurfaceFromData(spriteBuffer, 
+    bool res = spritesetTexture_->create8bitsSurfaceFromData(spriteBuffer,
                                             textureWidth_, 
                                             textureWidth_,
                                             255);
@@ -316,6 +317,46 @@ bool SpriteManager::drawSprite(int spriteNum, int x, int y, bool flipped, bool x
  * @param height Height of the portion of texture to copy
  * @return 
  */
+bool SpriteManager::createTintMask(const std::vector<int> &spriteIds, uint8_t colorIndex) {
+    const uint8_t kTransparent = 255;
+    std::vector<uint8_t> mask(textureWidth_ * textureWidth_, kTransparent);
+    tintedSprites_.assign(spriteCount_, false);
+
+    for (int spriteId : spriteIds) {
+        Sprite *pSprite = sprite(spriteId);
+        if (pSprite == nullptr) {
+            continue;
+        }
+        Point2D loc = pSprite->textureLocation();
+        for (int y = loc.y; y < loc.y + pSprite->height(); y++) {
+            for (int x = loc.x; x < loc.x + pSprite->width(); x++) {
+                size_t i = y * textureWidth_ + x;
+                if (pixels_[i] == colorIndex) {
+                    mask[i] = colorIndex;
+                    tintedSprites_[spriteId] = true;
+                }
+            }
+        }
+    }
+
+    // The mask is white so it takes the color given when drawing
+    fs_eng::Palette maskPalette {};
+    maskPalette[colorIndex] = {255, 255, 255, 255};
+
+    tintTexture_ = g_System.createTexture();
+    return tintTexture_->create8bitsSurfaceFromData(mask.data(), textureWidth_, textureWidth_, kTransparent) &&
+        tintTexture_->setPalette(maskPalette) &&
+        tintTexture_->loadTextureFromSurface();
+}
+
+void SpriteManager::drawSpriteTint(int spriteNum, int x, int y, bool flipped, fs_eng::FSColor color) {
+    Sprite *pSprite = sprite(spriteNum);
+    if (pSprite && tintTexture_) {
+        tintTexture_->setColorModulation(color);
+        tintTexture_->renderExtended(pSprite->textureLocation(), {x, y}, pSprite->width(), pSprite->height(), 1, flipped);
+    }
+}
+
 bool SpriteManager::drawTexture(Point2D src, Point2D dst, int width, int height) {
     spritesetTexture_->render(src, dst, width, height);
     

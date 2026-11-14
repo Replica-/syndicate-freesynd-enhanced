@@ -37,6 +37,11 @@
 
 namespace fs_eng {
 
+//! Delay in ms between frames of the transition animations, as in the original game
+const uint32_t kTransitionFrameDelay = 66;
+//! Delay in ms between frames of the transition animations in hardware mode (twice as fast)
+const uint32_t kFastTransitionFrameDelay = 33;
+
 //! This defines the list of events for the transition show animation
 const FrameEvent transition_show_event[] = {
     {-1, kNoSound, 0x0, NULL }
@@ -284,6 +289,10 @@ void MenuManager::handleTick(uint32_t elapsed) {
  * Change the current menu with the one with the given name.
  * Plays the transition animations between the two menus.
  */
+uint32_t MenuManager::frameInterval() {
+    return current_ ? current_->frameInterval() : Menu::kDefaultFrameInterval;
+}
+
 void MenuManager::changeCurrentMenu()
 {
     leaveCurrentMenu();
@@ -341,6 +350,7 @@ void MenuManager::showNextMenu() {
         // that could be highlighted because the mouse is upon it
         Point2D point;
         uint32_t state = g_System.getMousePos(point);
+        point.x -= menuOffsetX();
         current_->mouseMotionEvent(point, state);
     }
 
@@ -370,13 +380,14 @@ void MenuManager::leaveCurrentMenu() {
             // save next menu for after transition
             pTransitionFliMenu->setNextMenu(nextMenuId_);
             pTransitionFliMenu->clearFliDescList();
+            uint32_t frameDelay = g_Ctx.isHardwareRendering() ? kFastTransitionFrameDelay : kTransitionFrameDelay;
 
             if (pFactory_->hasLeaveAnimation(currentId)) {
-                pTransitionFliMenu->addFliDesc(pFactory_->getLeaveAnimation(currentId), 66, false, false, false, transition_leave_event);
+                pTransitionFliMenu->addFliDesc(pFactory_->getLeaveAnimation(currentId), frameDelay, false, false, false, transition_leave_event);
             }
 
             if (pFactory_->hasShowAnimation(nextMenuId_)) {
-                pTransitionFliMenu->addFliDesc(pFactory_->getShowAnimation(nextMenuId_), 66, false, false, false, transition_show_event);
+                pTransitionFliMenu->addFliDesc(pFactory_->getShowAnimation(nextMenuId_), frameDelay, false, false, false, transition_show_event);
             }
             // set next menu to be the transition menu
             nextMenuId_ = Menu::kMenuIdFliTransition;
@@ -408,12 +419,22 @@ void MenuManager::copyFromBackground(Point2D pos, int width, int height) {
  * Renders the current menu if there is one
  * and if it needs to be refreshed.
  */
+int MenuManager::menuOffsetX() {
+    if (current_ == nullptr || current_->isWideScreen()) {
+        return 0;
+    }
+    return (g_System.screenWidth() - fs_eng::kScreenWidth) / 2;
+}
+
 void MenuManager::renderMenu() {
     if (current_) {
+        // Menus made for kScreenWidth are centred on a wide screen
+        g_System.setDrawOffsetX(menuOffsetX());
         if (current_->doNeedBackground()) {
            pBackgroundTexture_->renderFullTextureStrech(fs_eng::kScreenWidth, fs_eng::kScreenHeight);
         }
         current_->render();
+        g_System.setDrawOffsetX(0);
     }
 }
 
@@ -425,7 +446,7 @@ void MenuManager::handleEvent(const FS_Event& evt) {
         break;
     case EVT_MSE_MOTION:
         if (current_ && !drop_events_)
-            current_->mouseMotionEvent({evt.motion.x, evt.motion.y}, evt.motion.state);
+            current_->mouseMotionEvent({evt.motion.x - menuOffsetX(), evt.motion.y}, evt.motion.state);
         break;
     case EVT_MSE_DOWN:
         since_mouse_down_ = 0;
@@ -438,18 +459,23 @@ void MenuManager::handleEvent(const FS_Event& evt) {
 #endif
 
         if (current_ && !drop_events_) {
-            current_->mouseDownEvent({evt.button.x, evt.button.y}, evt.button.button);
+            current_->mouseDownEvent({evt.button.x - menuOffsetX(), evt.button.y}, evt.button.button);
         }
         break;
     case EVT_MSE_UP:
         mouseup_was_ = true;
         if (current_ && !drop_events_) {
-            current_->mouseUpEvent({evt.button.x, evt.button.y}, evt.button.button);
+            current_->mouseUpEvent({evt.button.x - menuOffsetX(), evt.button.y}, evt.button.button);
         }
         break;
     case EVT_KEY_DOWN:
         if (current_ && !drop_events_) {
             current_->keyEvent(evt.key.key);
+        }
+        break;
+    case EVT_MSE_WHEEL:
+        if (current_ && !drop_events_) {
+            current_->mouseWheelEvent({evt.wheel.x - menuOffsetX(), evt.wheel.y}, evt.wheel.delta);
         }
         break;
     case EVT_NONE:

@@ -143,6 +143,11 @@ public:
     static const uint8_t kBMaskBlockerTargetOutOfMap;
     static const uint8_t kBMaskBlockerTargetObjectUpdated;
     static const uint8_t kBMaskBlockerTargetPosUpdated;
+    /*!
+     * A friend of the shooter closer than this distance to the shooter
+     * does not block or take shots (2 tiles).
+     */
+    static const int32_t kFriendlyFireSafeDistance;
 
     Mission(const LevelData::MapInfos & map_infos, Map *pMap);
     virtual ~Mission();
@@ -157,6 +162,27 @@ public:
     void endWithStatus(Status status);
     //! Update mission state
     void handleTick(uint32_t elapsed, uint32_t diff);
+
+    //! A drop of blood flying after a ped was hit
+    struct BloodDrop {
+        //! Position in world coordinates
+        double x, y, z;
+        //! Speed in world units per ms
+        double vx, vy, vz;
+        //! Height of the floor where the drop stops falling
+        double floorZ;
+        //! Time left before the drop disappears, in ms
+        int life;
+        //! Life of the drop when it was created : it fades out as its life goes
+        int maxLife;
+    };
+    /*!
+     * A ped was hit at impactW by a shot coming from originW : blood sprays from
+     * the impact, away from the shooter, and falls to the floor at floorZ.
+     */
+    void addBloodSpray(const WorldPoint &impactW, const WorldPoint &originW, int floorZ);
+    //! The drops of blood that are currently visible
+    const std::vector<BloodDrop> &bloodDrops() const { return bloodDrops_; }
 
     //! Returns true if mission status is failed
     bool failed() { return status_ == kMissionStatusFailed; }
@@ -261,7 +287,13 @@ public:
 
     bool setSurfaces();
     void clrSurfaces();
-    bool getWalkable(TilePoint &mtp);
+    /*!
+     * Finds the walkable surface under the given point of the screen, from the top of
+     * the map or, if maxZ is not -1, from the level maxZ (to click inside a building).
+     */
+    bool getWalkable(TilePoint &mtp, int maxZ = -1);
+    //! True if peds can walk on the tile at the given position
+    bool isWalkable(int x, int y, int z);
     bool getWalkableClosestByZ(TilePoint &mtp);
     bool getShootableTile(TilePoint *pLocT);
     bool isTileSolid(int x, int y, int z, int ox, int oy, int oz);
@@ -337,6 +369,10 @@ protected:
     std::vector<std::unique_ptr<Static>> statics_;
     //! List of SFXObject that need to be animated
     std::vector<std::unique_ptr<SFXObject>> sfx_objects_;
+    //! Drops of blood sprayed by hits
+    std::vector<BloodDrop> bloodDrops_;
+    //! Moves the drops of blood
+    void updateBloodDrops(uint32_t elapsed);
     //! List of ProjectileShot that need to be animated
     std::vector<std::unique_ptr<ProjectileShot>> projectileShots_;
     /*!

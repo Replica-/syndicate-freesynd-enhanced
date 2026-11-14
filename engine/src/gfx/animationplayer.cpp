@@ -173,7 +173,11 @@ void AnimationPlayer::reset() {
  * @param screenPos Position on the screen
  * @param animOffset An offset to apply to current animationId to get animation to draw
  */
-void AnimationPlayer::draw(const Point2D &screenPos, uint16_t animOffset) {
-    g_AnimMgr.drawFrame(currentAnimation_.framesAnimation + animOffset, frame_, screenPos);
+void AnimationPlayer::frameBounds(uint16_t mapObjectAnimationId, const Point2D &screenPos, Point2D *pTopLeft, int *pWidth, int *pHeight) {
+    g_AnimMgr.frameBounds(animations_.at(mapObjectAnimationId).framesAnimation, 0, screenPos, pTopLeft, pWidth, pHeight);
+}
+
+void AnimationPlayer::draw(const Point2D &screenPos, uint16_t animOffset, const fs_eng::FSColor *pTint) {
+    g_AnimMgr.drawFrame(currentAnimation_.framesAnimation + animOffset, frame_, screenPos, pTint);
 }
 }

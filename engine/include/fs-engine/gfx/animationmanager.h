@@ -89,8 +89,28 @@ public:
     size_t getNumAnims() { return firstFramePerAnim_.size(); }
     //! Draw a single sprite without animation
     void drawSprite(int spriteId, const Point2D &screenPos);
-    //! Draw a frame for a given animation
-    bool drawFrame(uint16_t animId, int frameId, const Point2D &screenPos);
+    //! Draws a sprite twice as big
+    void drawSpriteX2(int spriteId, const Point2D &screenPos) { spritesManager_.drawSprite(spriteId, screenPos.x, screenPos.y, false, true); }
+    //! Draws the texture with all the sprites (development)
+    void drawSpriteSheet(const Point2D &pos, int width, int height) { spritesManager_.drawTexture({0, 0}, pos, width, height); }
+    /*!
+     * Draw a frame for a given animation. If pTint is set, the pixels of the
+     * tint mask (see createTintMask()) are drawn with this color.
+     */
+    bool drawFrame(uint16_t animId, int frameId, const Point2D &screenPos, const fs_eng::FSColor *pTint = nullptr);
+    /*!
+     * Returns in pTopLeft, pWidth and pHeight the rectangle covered on screen by the given
+     * frame of an animation when drawn at screenPos.
+     */
+    void frameBounds(uint16_t animId, int frameId, const Point2D &screenPos, Point2D *pTopLeft, int *pWidth, int *pHeight);
+    //! The next sprites are drawn with their colors multiplied by the given color (white for no change)
+    void setColorModulation(fs_eng::FSColor color) { spritesManager_.setColorModulation(color); }
+    //! How the next sprites are blended (kBlend is the normal way)
+    void setBlendMode(FSTexture::BlendMode mode) { spritesManager_.setBlendMode(mode); }
+    //! Creates the mask used to recolor sprites when a frame is drawn with a tint
+    bool createTintMask(const std::vector<int> &spriteIds, uint8_t colorIndex) {
+        return spritesManager_.createTintMask(spriteIds, colorIndex);
+    }
     //! Return true if the frameId is the last frame for given animation
     bool lastFrame(uint16_t animId, int frameId);
     //! Return the id of the last frame of given animation

@@ -17,5 +17,8 @@ call "%VSDIR%\VC\Auxiliary\Build\vcvars64.bat" >nul || exit /b 1
 set "PATH=%PATH%;%APPDATA%\Python\Python312\Scripts"
 
 cd /d "%~dp0.."
-cmake --preset ninja-msvc-x64-%CONFIG% || exit /b 1
+rem Configure only the first time : afterwards the build configures again by itself when needed
+if not exist "build\ninja-msvc-x64-%CONFIG%\build.ninja" (
+    cmake --preset ninja-msvc-x64-%CONFIG% || exit /b 1
+)
 cmake --build --preset build-ninja-msvc-x64-%CONFIG% || exit /b 1

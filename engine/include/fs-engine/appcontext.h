@@ -46,8 +46,21 @@ public:
     void readConfiguration(const std::string& iniPath, const std::string& userConfFolder);
 
     bool isFullScreen() { return fullscreen_; }
+    //! Development : file where to export the sprites of a mission (empty for none)
+    const std::string &getSpriteExportPath() { return spriteExportPath_; }
+    void setSpriteExportPath(const std::string &path) { spriteExportPath_ = path; }
+    //! Sets the fullscreen parameter and saves it in the config file
+    void updateFullScreen(bool fullscreen);
+    //! True when shadows and lights are drawn (hardware mode)
+    bool isLightingEnabled() { return lighting_; }
+    //! Sets the lighting parameter and saves it in the config file
+    void updateLighting(bool lighting);
 
     bool isPlayIntro() { return playIntro_; }
+
+    //! True for hardware rendering, false for the original software rendering
+    bool isHardwareRendering() { return hardwareRendering_; }
+    void setHardwareRendering(bool hardware) { hardwareRendering_ = hardware; }
 
     bool isTestFiles() { return test_files_; }
     //! Return the sound volume parameter
@@ -59,6 +72,23 @@ public:
     void deactivateTestFlag();
     //! Sets the sound volume parameter to the given value in the config file
     void updateSoundVolume(int volume);
+
+    /*!
+     * Returns the palette to use for missions instead of their own one (it sets the
+     * time of day) : from 1 to 5 for the files hpal01.dat to hpal05.dat, 0 to use
+     * the palette of the mission.
+     */
+    int getMissionPalette() { return missionPalette_; }
+    //! Sets the palette for missions and saves it in the config file
+    void updateMissionPalette(int paletteId);
+
+    /*!
+     * Hardware mode : time of day applied to missions as a color grade, without
+     * changing the palette. 0 is the mission's own look, then day, dusk, night, dawn.
+     */
+    int getTimeOfDay() { return timeOfDay_; }
+    //! Sets the time of day and saves it in the config file
+    void updateTimeOfDay(int timeOfDay);
 
     uint32_t getTimeForClick() { return time_for_click_; }
 
@@ -77,6 +107,20 @@ private:
     bool fullscreen_;
     /*! True means the intro will be played.*/
     bool playIntro_;
+    /*!
+     * True (render_mode = hardware) uses the GPU renderer and enhancements
+     * like extra company colours and faster menu transitions.
+     * False (render_mode = software) keeps the original behaviour for comparison.
+     */
+    bool hardwareRendering_;
+    //! Palette to use for missions (time of day in software mode) : 0 is the palette of the mission
+    int missionPalette_;
+    //! Time of day in hardware mode : 0 is the mission's own look
+    int timeOfDay_;
+    //! Shadows and lights in hardware mode
+    bool lighting_;
+    //! Development : file where to export the sprites of a mission
+    std::string spriteExportPath_;
     /*! Time range between mouse up and down that is treated as click,
      * if it will be longer it will be treated as dragging
     */

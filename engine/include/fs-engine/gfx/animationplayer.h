@@ -95,11 +95,14 @@ public:
 
     uint16_t currentAnimationId() { return currentAnimationId_; }
 
-    // Draw the current animation at given position
-    void draw(const Point2D &screenPos, uint16_t animOffset);
+    // Draw the current animation at given position, with an optional tint (see AnimationManager::drawFrame())
+    void draw(const Point2D &screenPos, uint16_t animOffset, const fs_eng::FSColor *pTint = nullptr);
 
     //! Keep current animation loaded but resets it to first frame and stops playing
     void resetAnimation();
+
+    //! Returns the rectangle covered on screen by the first frame of the given animation (see AnimationManager::frameBounds())
+    void frameBounds(uint16_t mapObjectAnimationId, const Point2D &screenPos, Point2D *pTopLeft, int *pWidth, int *pHeight);
 
 protected:
     //! loads the animation to play. Subclass can alter the loaded animation

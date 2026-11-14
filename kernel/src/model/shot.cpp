@@ -68,6 +68,11 @@ void InstantImpactShot::inflictDamage(Mission *pMission) {
 
         if (pTargetHit != NULL) {
             hitsByObject[pTargetHit] = hitsByObject[pTargetHit] + 1;
+            if (pTargetHit->is(MapObject::kNaturePed)) {
+                // Blood sprays out of the ped, away from the shooter
+                WorldPoint pedPosW(pTargetHit->position());
+                pMission->addBloodSpray(impactPosW, originLocW, pedPosW.z);
+            }
         }
         // creates impact sprite
         createImpactAnimation(pMission, pTargetHit, impactPosW);

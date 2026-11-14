@@ -52,6 +52,15 @@ public:
 
     bool isSoundDisabled() const { return disableSound_; }
 
+    bool isSoftwareRendering() const { return softwareRendering_; }
+
+    //! Returns the file where to save a screenshot or an empty string
+    std::string getScreenshotPath() const { return screenshotPath_; }
+    //! Time in ms after which the screenshot is taken
+    uint32_t getScreenshotDelay() const { return screenshotDelay_; }
+    //! Returns the file where to export the sprites or an empty string
+    std::string getSpriteExportPath() const { return spriteExportPath_; }
+
     std::string getLogMask() const { return logMask_; }
 
     std::string getIniPath() const { return iniPath_; }
@@ -64,6 +73,22 @@ private:
      * Set to true to mute the sound and music using CLI param "--nosound".
      */
     bool disableSound_;
+    /*!
+     * Set to true to use the original software rendering using CLI param "--software".
+     * Overrides the render_mode parameter of user.conf.
+     */
+    bool softwareRendering_;
+    /*!
+     * Development option "--screenshot" : the screen is saved in this PNG file
+     * after screenshotDelay_ ms, then the application quits.
+     */
+    std::string screenshotPath_;
+    uint32_t screenshotDelay_ = 3000;
+    /*!
+     * Development option "--export-sprites" : when a mission starts, its sprites are
+     * saved in this PNG file with the mission palette, then the application quits.
+     */
+    std::string spriteExportPath_;
     //! This variable stores the log mask to init log. By default we activate all logs
     std::string logMask_ = "ALL";
     //! The path to the folder containing the application level parameters

@@ -75,6 +75,7 @@ public:
 
     bool handleTick(uint32_t elapsed) override;
     bool handleBeforeShow() override;
+    uint32_t frameInterval() override;
 
     void handleLeave() override;
 
@@ -98,6 +99,8 @@ protected:
     bool handleUnMappedKey(const FS_Key key) override;
 
     bool loadNextFli();
+    //! Returns true when it's time to decode the next frame
+    bool isTimeForNextFrame(uint32_t elapsed, uint32_t frameDelay);
 
 protected:
     /*! The Fli player.*/
@@ -106,8 +109,13 @@ protected:
     std::vector<FliDesc> fliList_;
     /*! Index of the next animation to play.*/
     size_t fliIndex_;
-    /*! Timer to control animation speed.*/
+    /*! Timer to control animation speed (software rendering).*/
     fs_utl::Timer frameTimer_;
+    /*!
+     * Time accumulated since the last frame (hardware rendering). Unlike frameTimer_,
+     * the time left over is kept so frames are evenly spaced.
+     */
+    int32_t frameElapsed_;
     /*! A flag telling if an animation is being played.*/
     bool playingFli_;
     /*! Id of the menu to go after all animations have been played.*/

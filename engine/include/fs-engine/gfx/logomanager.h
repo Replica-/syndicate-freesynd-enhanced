@@ -25,6 +25,7 @@
 #define ENGINE_LOGOMANAGER_H
 
 #include <memory>
+#include <vector>
 
 #include "fs-utils/common.h"
 #include "fs-engine/enginecommon.h"
@@ -39,7 +40,7 @@ namespace fs_eng {
  */
 class LogoManager : public Singleton<LogoManager>{
 public:
-    /*! Max number of colors for logos.*/
+    /*! Number of colors for logos in the original game (palette colors).*/
     static const int kMaxColour;
 
     explicit LogoManager();
@@ -48,8 +49,12 @@ public:
     //! Initialize logoManager by loading the logos
     void loadLogos(const fs_eng::Palette &palette);
 
-    //! Return the color value at the given index
+    //! Return the palette index of the original color at the given index
     uint8_t getColorAtIndex(int colourIdx);
+    //! Returns the number of company colors that can be chosen
+    int numColours() { return static_cast<int>(colours_.size()); }
+    //! Returns the RGB value of the company color at the given index
+    fs_eng::FSColor getColour(int colourIdx);
     //! Returns the number of available logos
     int numLogos();
     //! Draws a logo at given position with the given color in big format or not
@@ -58,6 +63,17 @@ public:
 private:
     //! Copies logos data found in original files into a buffer before copying it to a surface
     void copyLogosPixelsToBuffer(const uint8_t *bigLogosData, uint8_t *logosBuffer);
+    //! Fills the list of company colors
+    void loadColours(const fs_eng::Palette &palette);
+    //! Returns the index of the original color closest to the given extra color
+    int closestOriginalColour(int colourIdx);
+
+private:
+    /*!
+     * Company colors : the original palette colors first then, in hardware
+     * mode only, extra colors that are not limited by the palette.
+     */
+    std::vector<fs_eng::FSColor> colours_;
 
 private:
     /*! Width for a normal logo*/

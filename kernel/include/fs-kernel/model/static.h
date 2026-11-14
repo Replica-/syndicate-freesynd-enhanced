@@ -299,6 +299,19 @@ public:
         animationPlayer_->play(animLightOn_, 0, static_cast<uint32_t> (30000 + (rand() % 30000)));
     }
 
+    //! Returns the rectangle covered by the window on screen, when the object is drawn at screenPos
+    void windowBounds(const Point2D &screenPos, Point2D *pTopLeft, int *pWidth, int *pHeight) {
+        animationPlayer_->frameBounds(animLigthOff_, addOffs(screenPos), pTopLeft, pWidth, pHeight);
+    }
+
+    //! True when the light is on in the window (with or without someone in it)
+    bool isLightOn() {
+        return animationPlayer_->isCurrentAnimation(animLightOn_) ||
+            animationPlayer_->isCurrentAnimation(animShowPed_) ||
+            animationPlayer_->isCurrentAnimation(animPedAppears_) ||
+            animationPlayer_->isCurrentAnimation(animPedDisappears_);
+    }
+
 protected:
     void handleAnimationEnded() override;
 

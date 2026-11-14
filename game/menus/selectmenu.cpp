@@ -599,6 +599,17 @@ bool SelectMenu::handleMouseDown(Point2D point, int button)
     return false;
 }
 
+/*!
+ * Keys 1 to 4 select the corresponding agent, as in the gameplay menu.
+ */
+bool SelectMenu::handleUnMappedKey(const fs_eng::FS_Key key) {
+    if (key.keyCode >= fs_eng::kKeyCode_1 && key.keyCode <= fs_eng::kKeyCode_4) {
+        handleClickOnAgentSelector(key.keyCode - fs_eng::kKeyCode_1, kMouseLeftButton);
+        return true;
+    }
+    return false;
+}
+
 /**
  * Handles when the player clicks on a agent selector.
  */

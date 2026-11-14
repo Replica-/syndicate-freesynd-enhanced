@@ -435,6 +435,20 @@ void WeaponInstance::fire(Mission *pMission, DamageToInflict &dmg, uint32_t elap
         shot.inflictDamage(pMission);
     }
 
+    // Firing weapons flash : the flash lights up the scene in hardware mode
+    if (pOwner_) {
+        if (isInstanceOf(Weapon::Laser)) {
+            pOwner_->showMuzzleFlash({255, 70, 60, 255});
+        } else if (isInstanceOf(Weapon::GaussGun)) {
+            pOwner_->showMuzzleFlash({170, 210, 255, 255});
+        } else if (isInstanceOf(Weapon::Flamer)) {
+            pOwner_->showMuzzleFlash({255, 150, 50, 255});
+        } else if (isInstanceOf(Weapon::Pistol) || isInstanceOf(Weapon::Uzi) || isInstanceOf(Weapon::Minigun) ||
+                    isInstanceOf(Weapon::Shotgun) || isInstanceOf(Weapon::LongRange)) {
+            pOwner_->showMuzzleFlash({255, 215, 130, 255});
+        }
+    }
+
     int ammoUsed = pWeaponClass_->ammoPerShot();
     ammo_remaining_ -= ammoUsed;
     if (ammo_remaining_ < 0) {

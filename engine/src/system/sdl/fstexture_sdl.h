@@ -38,6 +38,10 @@ public:
     void render(Point2D src, Point2D dst, int width, int height) override;
     void renderStretch(Point2D src, Point2D dst, int width, int height, int ratio) override;
     void renderFullTextureStrech(int width, int height) override;
+    void renderScaled(Point2D src, int srcWidth, int srcHeight, Point2D dst, int dstWidth, int dstHeight) override;
+    void setBlendMode(BlendMode mode) override;
+    void setAlphaModulation(uint8_t alpha) override;
+    void renderRotated(Point2D dst, int dstWidth, int dstHeight, double angle, Point2D pivot) override;
     //! @copydoc FSTexture::renderExtended()
     void renderExtended(Point2D src, Point2D dst, int width, int height, int ratio, bool flipped) override;
 
@@ -63,7 +67,6 @@ public:
     void setColorInPalette(int index, fs_eng::FSColor color) override;
     //! @copydoc FSTexture::setColorModulation()
     void setColorModulation( fs_eng::FSColor color ) override;
-
 private:
     //! Deallocates surface
     void freeSurface();

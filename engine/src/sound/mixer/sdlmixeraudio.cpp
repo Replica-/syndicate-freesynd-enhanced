@@ -41,6 +41,12 @@ static struct ADLMIDI_AudioFormat s_audioFormat;
  * The bank corresponding to Syndicate was 19.
  */
 static struct ADL_MIDIPlayer    *pMidiPlayer = NULL;
+/*!
+ * The audio callback plays the music in the audio thread while the game loads or
+ * changes songs in its own thread : the midi player must not be used by both at the
+ * same time (the tracks of a song are changed while they're being played).
+ */
+static SDL_mutex *pMidiMutex = NULL;
 
 /**
  * This is the audio callback function that SDL_Mixer will call when playing the music.
@@ -53,6 +59,12 @@ void fs_audio_callback(void *midi_player, Uint8 *stream, int len)
 {
     if (!is_playing)
       return;
+
+    SDL_LockMutex(pMidiMutex);
+    if (!is_playing) {
+        SDL_UnlockMutex(pMidiMutex);
+        return;
+    }
 
     struct ADL_MIDIPlayer* p = (struct ADL_MIDIPlayer*)midi_player;
 
@@ -70,6 +82,7 @@ void fs_audio_callback(void *midi_player, Uint8 *stream, int len)
         is_playing = 0;
         SDL_memset(stream, 0, len);
     }
+    SDL_UnlockMutex(pMidiMutex);
 }
 
 namespace fs_eng {
@@ -151,6 +164,9 @@ bool SdlMixerAudio::init(EFrequency freq, EFormat fmt, EChannel chan, int chunks
     LOG(Log::k_FLG_SND, "SdlMixerAudio", "init", ("Audio device opened at %d Hz, %d channels", obtainedFrequency, obtainedChannels));
 
     // initialize the player at the real output rate so music plays at the correct speed and pitch
+    if (pMidiMutex == NULL) {
+        pMidiMutex = SDL_CreateMutex();
+    }
     pMidiPlayer = adl_init(obtainedFrequency);
     if (!pMidiPlayer) {
         FSERR(Log::k_FLG_SND, "SdlMixerAudio", "init", ("Couldn't initialize ADLMIDI: %s\n", adl_errorString()));
@@ -227,9 +243,11 @@ bool SdlMixerAudio::quit(void) {
         Mix_HaltMusic();
         Mix_HaltChannel(-1);
         Mix_CloseAudio();
+        SDL_LockMutex(pMidiMutex);
         adl_close(pMidiPlayer);
-        initialized_ = false;
         pMidiPlayer = nullptr;
+        SDL_UnlockMutex(pMidiMutex);
+        initialized_ = false;
         return true;
     }
     return false;
@@ -309,14 +327,15 @@ std::unique_ptr<Sound> SdlMixerAudio::createSound() {
 }
 
 bool SdlMixerAudio::openFile(std::string path) {
-    if (adl_openFile(pMidiPlayer, path.c_str()) < 0) {
+    SDL_LockMutex(pMidiMutex);
+    is_playing = 0;
+    int res = adl_openFile(pMidiPlayer, path.c_str());
+    SDL_UnlockMutex(pMidiMutex);
+    if (res < 0) {
+        // The player is kept : the audio callback still uses it
         FSERR(Log::k_FLG_SND, "SdlMixerAudio", "openFile", ("Couldn't open music file: %s\n", adl_errorInfo(pMidiPlayer)));
-        SDL_CloseAudio();
-        adl_close(pMidiPlayer);
         return false;
     }
-    //Mix_PauseMusic();
-    is_playing = 0;
 
     return true;
 }
@@ -329,8 +348,10 @@ bool SdlMixerAudio::openFile(std::string path) {
 void SdlMixerAudio::playMusic(int songNb, bool loop) {
     pauseMusic();
     // We use the loop marker that are in the file
+    SDL_LockMutex(pMidiMutex);
     adl_setLoopEnabled(pMidiPlayer, loop ? 1 : 0);
     adl_selectSongNum(pMidiPlayer, songNb);
+    SDL_UnlockMutex(pMidiMutex);
     resumeMusic();
 }
 

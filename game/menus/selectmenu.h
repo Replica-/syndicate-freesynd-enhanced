@@ -50,6 +50,7 @@ protected:
     void handleMouseMotion(Point2D point, uint32_t state) override;
     void handleMouseUp(Point2D point, int button) override;
     bool handleMouseDown(Point2D point, int button) override;
+    bool handleUnMappedKey(const fs_eng::FS_Key key) override;
     void handleClickOnAgentSelector(const size_t agent_no, int button);
 
     void updateClock();

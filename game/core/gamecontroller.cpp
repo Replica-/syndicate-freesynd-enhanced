@@ -29,6 +29,7 @@
 
 #include "fs-utils/log/log.h"
 #include "fs-utils/io/file.h"
+#include "fs-engine/appcontext.h"
 #include "fs-kernel/model/squad.h"
 #include "fs-kernel/model/ped.h"
 
@@ -176,7 +177,10 @@ fs_knl::MissionBriefing * GameController::loadBriefing(int n) {
  */
 bool GameController::loadSelectedMission() {
     Block block = session_->getSelectedBlock();
-    fs_knl::Mission *pMission = missionMgr_.loadMission(block.mis_id, block.paletteId);
+    // In software mode, the player can choose the palette (time of day) instead of the
+    // one of the mission. In hardware mode the palette is kept and the time of day is a color grade
+    int paletteId = (!g_Ctx.isHardwareRendering() && g_Ctx.getMissionPalette() != 0) ? g_Ctx.getMissionPalette() : block.paletteId;
+    fs_knl::Mission *pMission = missionMgr_.loadMission(block.mis_id, paletteId);
 
     return pMission != nullptr;
 }

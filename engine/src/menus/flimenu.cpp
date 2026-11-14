@@ -20,10 +20,16 @@
 
 #include "fs-engine/menus/flimenu.h"
 
+#include "fs-engine/appcontext.h"
 #include "fs-engine/sound/musicmanager.h"
 #include "fs-engine/sound/soundmanager.h"
 
 namespace fs_eng {
+
+//! Interval between ticks while playing an animation in hardware mode : the loop is paced by vsync
+const uint32_t kHardwareFliFrameInterval = 8;
+//! A frame is shown up to this many ms early so it lands on the closest display refresh
+const int32_t kFrameTolerance = 4;
 
 /*!
  * Constructor
@@ -31,7 +37,7 @@ namespace fs_eng {
  * @param menuId 
  * @param parentId 
  */
-FliMenu::FliMenu(MenuManager *m, int menuId, int parentId) : Menu(m, menuId, parentId), fliPlayer_(), frameTimer_(0)
+FliMenu::FliMenu(MenuManager *m, int menuId, int parentId) : Menu(m, menuId, parentId), fliPlayer_(), frameTimer_(0), frameElapsed_(0)
 {
     fliIndex_ = 0;
     playingFli_ = false;
@@ -103,6 +109,8 @@ bool FliMenu::loadNextFli() {
                 // drawn in the first pass
                 frameTimer_.reset(desc.frameDelay);
                 frameTimer_.setToMax();
+                // so the first frame is shown immediately
+                frameElapsed_ = desc.frameDelay;
                 currSubTitle_.erase();
                 fliIndex_++;
                 return true;
@@ -131,7 +139,7 @@ bool FliMenu::handleTick(uint32_t elapsed)
     if (fliPlayer_.hasFrames()) {
         FliDesc desc = fliList_.at(fliIndex_ - 1);
         // There is a frame to display
-        if (frameTimer_.update(elapsed)) {
+        if (isTimeForNextFrame(elapsed, desc.frameDelay)) {
             int nbColor = 0;
             int frameIndex;
             // time to change frame -> read frame
@@ -192,6 +200,28 @@ bool FliMenu::handleTick(uint32_t elapsed)
     }
 
     return true;
+}
+
+bool FliMenu::isTimeForNextFrame(uint32_t elapsed, uint32_t frameDelay) {
+    if (!g_Ctx.isHardwareRendering()) {
+        return frameTimer_.update(elapsed);
+    }
+
+    frameElapsed_ += elapsed;
+    if (frameElapsed_ + kFrameTolerance < static_cast<int32_t>(frameDelay)) {
+        return false;
+    }
+    // Keep what is left so the next frame is not delayed, but don't
+    // try to catch up if we are more than one frame late
+    frameElapsed_ -= frameDelay;
+    if (frameElapsed_ >= static_cast<int32_t>(frameDelay)) {
+        frameElapsed_ = 0;
+    }
+    return true;
+}
+
+uint32_t FliMenu::frameInterval() {
+    return g_Ctx.isHardwareRendering() ? kHardwareFliFrameInterval : kDefaultFrameInterval;
 }
 
 void FliMenu::handleRender()

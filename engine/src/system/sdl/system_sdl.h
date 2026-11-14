@@ -55,7 +55,8 @@ public:
     ~SystemSDL();
 
     //! Initialize the SDL resources
-    void initialize(bool fullscreen) override;
+    void initialize(bool fullscreen, bool hardwareRendering) override;
+    bool saveScreenshot(const std::string &path) override;
     //! @copydoc System::showError()
     void showError(const char *errorMsg) override;
     bool clearScreen() override;
@@ -73,6 +74,11 @@ public:
 
     void delay(uint32_t msec) override;
     uint32_t getTicks() override;
+    bool isKeyDown(FS_KeyCode key) override;
+    bool isFullScreen() override;
+    int screenWidth() override { return screenWidth_; }
+    void setDrawOffsetX(int offsetX) override;
+    void setFullScreen(bool fullscreen) override;
 
     void drawPoint (Point2D start, fs_eng::FSColor color) override;
     void drawVLine(Point2D start, int length, fs_eng::FSColor color) override;
@@ -83,6 +89,7 @@ public:
     void drawLine(Point2D start, Point2D end, fs_eng::FSColor color) override;
     void drawRect(Point2D pos, int width, int height, fs_eng::FSColor color) override;
     void drawFillRect(Point2D pos, int width, int height, fs_eng::FSColor color) override;
+    void drawFillPolygon(const Point2D *points, int nbPoints, fs_eng::FSColor color) override;
 
     //! Returns the mouse pointer coordinates
     uint32_t getMousePos(Point2D &point) override;
@@ -121,8 +128,14 @@ protected:
 
     //! Sets the key arguments with some key codes
     void fillKeyEvent(SDL_Keysym sym, FS_Event &evtOut);
+    //! In hardware mode, sets the width of the screen from the shape of the window
+    void updateScreenWidth();
 
 protected:
+    //! Width of the screen in pixels (see screenWidth())
+    int screenWidth_ = fs_eng::kScreenWidth;
+    //! True when the screen can be wider than kScreenWidth (hardware mode)
+    bool wideScreenEnabled_ = false;
     /*! A constant that holds the cursor icon width and height.*/
     static const int kCursorWidth;
     /*! Cursor visibility.*/

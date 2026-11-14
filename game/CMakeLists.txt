@@ -29,6 +29,7 @@ set (SOURCES
 	core/gamecontroller.cpp
 	freesynd.cpp
 	menus/agentselectorrenderer.cpp
+	menus/maplighting.cpp
 	menus/maprenderer.cpp
 	menus/minimaprenderer.cpp
 	menus/briefmenu.cpp
@@ -57,6 +58,7 @@ set(HEADERS
 	core/gamesession.h
 	core/gamecontroller.h
 	menus/agentselectorrenderer.h
+	menus/maplighting.h
 	menus/maprenderer.h
 	menus/minimaprenderer.h
 	menus/briefmenu.h

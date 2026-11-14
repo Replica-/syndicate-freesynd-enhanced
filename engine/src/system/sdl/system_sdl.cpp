@@ -31,10 +31,12 @@
 
 #include <SDL_image.h>
 #include <algorithm>
+#include <vector>
 #include <format>
 #include "utf8.h"
 
 #include "fs-engine/config.h"
+#include "fs-engine/appcontext.h"
 #include "fs-engine/sound/audio.h"
 #include "fs-utils/io/file.h"
 #include "fs-utils/log/log.h"
@@ -80,7 +82,7 @@ SystemSDL::~SystemSDL() {
     SDL_Quit();
 }
 
-void SystemSDL::initialize(bool fullscreen) {
+void SystemSDL::initialize(bool fullscreen, bool hardwareRendering) {
     LOG(Log::k_FLG_INFO, "SystemSDL", "initialize", ("initializing System SDL"))
 
     if (SDL_Init( SDL_INIT_VIDEO ) < 0) {
@@ -93,14 +95,24 @@ void SystemSDL::initialize(bool fullscreen) {
         throw InitializationFailedException(std::format("Critical error, SDL could not be initialized! SDL Error :  {}", SDL_GetError()));
     }
 
-    pRenderer_ = SDL_CreateRenderer(pWindow_, -1, SDL_RENDERER_ACCELERATED | SDL_RENDERER_PRESENTVSYNC);
+    if (hardwareRendering) {
+        pRenderer_ = SDL_CreateRenderer(pWindow_, -1, SDL_RENDERER_ACCELERATED | SDL_RENDERER_PRESENTVSYNC);
+        if (pRenderer_ == nullptr) {
+            // No hardware renderer (eg headless with SDL_VIDEODRIVER=dummy) : fall back to software
+            LOG(Log::k_FLG_GFX, "SystemSDL", "initialize", ("No accelerated renderer, using software renderer: %s", SDL_GetError()))
+        }
+    }
     if (pRenderer_ == nullptr) {
-        // No hardware renderer (eg headless with SDL_VIDEODRIVER=dummy) : fall back to software
-        LOG(Log::k_FLG_GFX, "SystemSDL", "initialize", ("No accelerated renderer, using software renderer: %s", SDL_GetError()))
         pRenderer_ = SDL_CreateRenderer(pWindow_, -1, SDL_RENDERER_SOFTWARE);
     }
     if (pRenderer_ == nullptr) {
         throw InitializationFailedException(std::format("Critical error, SDL could not be initialized! SDL Error :  {}", SDL_GetError()));
+    }
+
+    SDL_RendererInfo rendererInfo;
+    if (SDL_GetRendererInfo(pRenderer_, &rendererInfo) == 0) {
+        LOG(Log::k_FLG_GFX, "SystemSDL", "initialize", ("Render mode: %s, using SDL renderer %s",
+            hardwareRendering ? "hardware" : "software", rendererInfo.name))
     }
 
     // initialize the screen to black
@@ -108,6 +120,9 @@ void SystemSDL::initialize(bool fullscreen) {
     SDL_RenderClear(pRenderer_);
     // in case we are fullscreen and did not specify dimensions
     SDL_RenderSetLogicalSize(pRenderer_, fs_eng::kScreenWidth, fs_eng::kScreenHeight);
+    // In hardware mode, the screen gets wider on a wide screen
+    wideScreenEnabled_ = hardwareRendering;
+    updateScreenWidth();
 
     // Init SDL_Image library
     int sdlImgFlags = IMG_INIT_PNG;
@@ -154,7 +169,7 @@ SDL_Window * SystemSDL::createWindow(bool fullscreen) {
                           SDL_WINDOWPOS_UNDEFINED,
                           SDL_WINDOWPOS_UNDEFINED,
                           fs_eng::kScreenWidth, fs_eng::kScreenHeight,
-                          SDL_WINDOW_SHOWN
+                          SDL_WINDOW_SHOWN | SDL_WINDOW_RESIZABLE
                           );
     }
 
@@ -176,6 +191,33 @@ void SystemSDL::showError(const char *errorMsg) {
 bool SystemSDL::clearScreen() {
     SDL_SetRenderDrawColor(pRenderer_, 0x00, 0x00, 0x00, 0xFF);
     return SDL_RenderClear(pRenderer_);
+}
+
+bool SystemSDL::saveScreenshot(const std::string &path) {
+    int width;
+    int height;
+    // Saves the texture that is being drawn if there's one, else the screen
+    SDL_Texture *pTarget = SDL_GetRenderTarget(pRenderer_);
+    if (pTarget != nullptr) {
+        if (SDL_QueryTexture(pTarget, nullptr, nullptr, &width, &height)) {
+            return false;
+        }
+    } else if (SDL_GetRendererOutputSize(pRenderer_, &width, &height)) {
+        return false;
+    }
+    SDL_Surface *pSurface = SDL_CreateRGBSurfaceWithFormat(0, width, height, 32, SDL_PIXELFORMAT_RGBA32);
+    if (pSurface == nullptr) {
+        return false;
+    }
+    bool res = SDL_RenderReadPixels(pRenderer_, nullptr, SDL_PIXELFORMAT_RGBA32, pSurface->pixels, pSurface->pitch) == 0 &&
+        IMG_SavePNG(pSurface, path.c_str()) == 0;
+    SDL_FreeSurface(pSurface);
+    if (res) {
+        LOG(Log::k_FLG_GFX, "SystemSDL", "saveScreenshot", ("Screenshot saved in %s", path.c_str()))
+    } else {
+        FSERR(Log::k_FLG_GFX, "SystemSDL", "saveScreenshot", ("Could not save screenshot in %s: %s", path.c_str(), SDL_GetError()))
+    }
+    return res;
 }
 
 void SystemSDL::updateScreen() {        
@@ -266,6 +308,11 @@ void SystemSDL::fillKeyEvent(SDL_Keysym keysym, FS_Event &evtOut) {
         case SDLK_0:case SDLK_1:case SDLK_2:case SDLK_3:case SDLK_4:
             key.keyCode = static_cast < FS_KeyCode > (kKeyCode_0 + (keysym.sym - SDLK_0));
             break;
+        // Numeric keypad works like the number keys for agent selection
+        case SDLK_KP_0: key.keyCode = kKeyCode_0; break;
+        case SDLK_KP_1: case SDLK_KP_2: case SDLK_KP_3: case SDLK_KP_4:
+            key.keyCode = static_cast < FS_KeyCode > (kKeyCode_1 + (keysym.sym - SDLK_KP_1));
+            break;
         case SDLK_a: case SDLK_b: case SDLK_c: case SDLK_d: case SDLK_e:
         case SDLK_f: case SDLK_g: case SDLK_h: case SDLK_i: case SDLK_j:
         case SDLK_k: case SDLK_l: case SDLK_m: case SDLK_n: case SDLK_o:
@@ -337,6 +384,15 @@ bool SystemSDL::pumpEvents(FS_Event &evtOut) {
                 case SDLK_LALT:
                     keyModState_ = keyModState_ | KMD_LALT;
                     break;
+                case SDLK_RETURN:
+                    // Alt+Enter switches between fullscreen and window, on every screen
+                    if ((evtIn.key.keysym.mod & KMOD_ALT) && !evtIn.key.repeat) {
+                        setFullScreen(!isFullScreen());
+                        g_Ctx.updateFullScreen(isFullScreen());
+                        break;
+                    }
+                    fillKeyEvent(evtIn.key.keysym, evtOut);
+                    break;
                 default:
                     // We pass the event only if it's not a allowed modifier key
                     // Plus, the application receives event only when key is pressed
@@ -394,6 +450,20 @@ bool SystemSDL::pumpEvents(FS_Event &evtOut) {
             evtOut.motion.state = evtIn.motion.state;
             evtOut.motion.keyMods = keyModState_;
             break;
+        case SDL_WINDOWEVENT:
+            if (evtIn.window.event == SDL_WINDOWEVENT_SIZE_CHANGED) {
+                updateScreenWidth();
+            }
+            break;
+        case SDL_MOUSEWHEEL:
+            if (evtIn.wheel.y != 0) {
+                evtOut.wheel.type = EVT_MSE_WHEEL;
+                evtOut.wheel.x = cursor_x_;
+                evtOut.wheel.y = cursor_y_;
+                evtOut.wheel.delta = evtIn.wheel.direction == SDL_MOUSEWHEEL_FLIPPED ? -evtIn.wheel.y : evtIn.wheel.y;
+                evtOut.wheel.keyMods = keyModState_;
+            }
+            break;
         default:
             break;
         }
@@ -408,6 +478,72 @@ void SystemSDL::delay(uint32_t msec) {
 
 uint32_t SystemSDL::getTicks() {
     return SDL_GetTicks();
+}
+
+/*!
+ * The height stays kScreenHeight and the width follows the shape of the window, so
+ * the game fills a wide screen instead of having black bars on its sides.
+ */
+void SystemSDL::updateScreenWidth() {
+    int width = fs_eng::kScreenWidth;
+    int outputWidth;
+    int outputHeight;
+    if (wideScreenEnabled_ && SDL_GetRendererOutputSize(pRenderer_, &outputWidth, &outputHeight) == 0 && outputHeight > 0) {
+        width = std::clamp(fs_eng::kScreenHeight * outputWidth / outputHeight, fs_eng::kScreenWidth, fs_eng::kMaxScreenWidth);
+        // an even width keeps the centre of the screen on a pixel
+        width -= width % 2;
+    }
+    if (width != screenWidth_) {
+        LOG(Log::k_FLG_GFX, "SystemSDL", "updateScreenWidth", ("Screen is now %d x %d", width, fs_eng::kScreenHeight))
+    }
+    screenWidth_ = width;
+    SDL_RenderSetLogicalSize(pRenderer_, screenWidth_, fs_eng::kScreenHeight);
+}
+
+void SystemSDL::setDrawOffsetX(int offsetX) {
+    if (offsetX == 0) {
+        SDL_RenderSetViewport(pRenderer_, nullptr);
+    } else {
+        SDL_Rect viewport = {offsetX, 0, fs_eng::kScreenWidth, fs_eng::kScreenHeight};
+        SDL_RenderSetViewport(pRenderer_, &viewport);
+    }
+}
+
+bool SystemSDL::isFullScreen() {
+    return (SDL_GetWindowFlags(pWindow_) & SDL_WINDOW_FULLSCREEN_DESKTOP) == SDL_WINDOW_FULLSCREEN_DESKTOP;
+}
+
+void SystemSDL::setFullScreen(bool fullscreen) {
+    // The game is drawn in its original size then scaled to the window or the screen
+    if (SDL_SetWindowFullscreen(pWindow_, fullscreen ? SDL_WINDOW_FULLSCREEN_DESKTOP : 0)) {
+        FSERR(Log::k_FLG_GFX, "SystemSDL", "setFullScreen", ("Could not change fullscreen mode: %s", SDL_GetError()))
+        return;
+    }
+    if (!fullscreen) {
+        SDL_SetWindowSize(pWindow_, fs_eng::kScreenWidth, fs_eng::kScreenHeight);
+        SDL_SetWindowPosition(pWindow_, SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED);
+    }
+    updateScreenWidth();
+}
+
+bool SystemSDL::isKeyDown(FS_KeyCode key) {
+    SDL_Keycode sdlKey;
+    if (key >= kKeyCode_A && key <= kKeyCode_Z) {
+        sdlKey = SDLK_a + (key - kKeyCode_A);
+    } else if (key == kKeyCode_Left) {
+        sdlKey = SDLK_LEFT;
+    } else if (key == kKeyCode_Right) {
+        sdlKey = SDLK_RIGHT;
+    } else if (key == kKeyCode_Up) {
+        sdlKey = SDLK_UP;
+    } else if (key == kKeyCode_Down) {
+        sdlKey = SDLK_DOWN;
+    } else {
+        return false;
+    }
+    // The keyboard state uses physical positions : find the key for the current layout
+    const Uint8 *state = SDL_GetKeyboardState(nullptr);
+    return state[SDL_GetScancodeFromKey(sdlKey)] != 0;
 }
 
 bool like(int a, int b) {
@@ -565,6 +701,28 @@ void SystemSDL::drawFillRect(Point2D pos, int width, int height, fs_eng::FSColor
     SDL_Rect outlineRect = { pos.x, pos.y, width, height};
     SDL_SetRenderDrawColor( pRenderer_, color.r, color.g, color.b, color.a );
     SDL_RenderFillRect( pRenderer_, &outlineRect );
+}
+
+void SystemSDL::drawFillPolygon(const Point2D *points, int nbPoints, fs_eng::FSColor color) {
+    if (nbPoints < 3) {
+        return;
+    }
+    // The polygon is convex, so it's drawn as a fan of triangles around the first point
+    std::vector<SDL_Vertex> vertices(nbPoints);
+    for (int i = 0; i < nbPoints; i++) {
+        vertices[i].position = { static_cast<float>(points[i].x), static_cast<float>(points[i].y) };
+        vertices[i].color = { color.r, color.g, color.b, color.a };
+        vertices[i].tex_coord = { 0.0f, 0.0f };
+    }
+    std::vector<int> indices;
+    for (int i = 1; i < nbPoints - 1; i++) {
+        indices.push_back(0);
+        indices.push_back(i);
+        indices.push_back(i + 1);
+    }
+    SDL_SetRenderDrawBlendMode(pRenderer_, SDL_BLENDMODE_BLEND);
+    SDL_RenderGeometry(pRenderer_, nullptr, vertices.data(), nbPoints, indices.data(), static_cast<int>(indices.size()));
+    SDL_SetRenderDrawBlendMode(pRenderer_, SDL_BLENDMODE_NONE);
 }
 
 /*!

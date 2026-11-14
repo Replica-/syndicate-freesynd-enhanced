@@ -266,6 +266,9 @@ bool TileManager::loadTiles()
                                             kNumOfTilesPerCol * Tile::kTileHeight,
                                             kTileColorKeyIndex);
 
+    // The pixels are kept to find lights in tiles
+    pixels_.assign(tilesPixels, tilesPixels + kNumOfTiles * Tile::kTileHeight * Tile::kTileWidth);
+
     delete[] typesData;
     delete[] tilesData;
     delete [] tilesPixels;

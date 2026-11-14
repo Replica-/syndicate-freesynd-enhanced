@@ -1112,6 +1112,8 @@ bool PedInstance::isFriendWith(PedInstance *p) {
 void PedInstance::verifyHostilesFound(Mission *m) {
     std::vector <ShootableMapObject *> rm_set;
     WorldPoint cur_xyz(pos_);
+    // the line of fire starts at the weapon, at half the size of the ped
+    cur_xyz.z += sizeZ() >> 1;
     int check_rng = sight_range_;
 
     WeaponInstance *wi = selectedWeapon();
@@ -1247,13 +1249,18 @@ int PedInstance::getSpeedOwnerBoost()
 void PedInstance::adjustAimedPtWithRangeAndAccuracy(Weapon *pWeaponClass, WorldPoint *pAimedLocW) {
     // 1- Adjust Range
     WorldPoint originLocW(pos_);
+    // shots start at the weapon, at half the size of the ped
+    originLocW.z += sizeZ() >> 1;
     if (originLocW.z > (pMap_->maxZ() - 1) * 128)
         return;
 
     if (pAimedLocW->z > (pMap_->maxZ() - 1) * 128)
         return;
 
-    double d = distanceToPosition(*pAimedLocW);
+    int dx = pAimedLocW->x - originLocW.x;
+    int dy = pAimedLocW->y - originLocW.y;
+    int dz = pAimedLocW->z - originLocW.z;
+    double d = sqrt((double)(dx * dx + dy * dy + dz * dz));
 
     if (d == 0)
         return;

@@ -343,6 +343,8 @@ bool SquadSelection::isTargetInRange(fs_knl::Mission *pMission, fs_knl::Shootabl
     for (SquadSelection::Iterator it = begin(); it != end(); ++it) {
         if ((*it)->isArmed()) {
             fs_knl::WorldPoint shooterPosW((*it)->position());
+            // the line of fire starts at the weapon, at half the size of the agent
+            shooterPosW.z += (*it)->sizeZ() >> 1;
             fs_knl::WeaponInstance *pWeapon = (*it)->selectedWeapon();
 
             uint8 blockRes = pMission->checkIfBlockersInShootingLine(

@@ -507,6 +507,8 @@ bool FollowToShootAction::doExecute(uint32_t elapsed, Mission *pMission, PedInst
         }
 
         WorldPoint pedPosW(pPed->position());
+        // the line of fire starts at the weapon, at half the size of the ped
+        pedPosW.z += pPed->sizeZ() >> 1;
         // Ped stops walking if the target is in range of fire (ie close enough and not
         // hiding behing something)
         if (pPed->isCloseTo(pTarget_, followDistance_) &&
@@ -1045,11 +1047,12 @@ void ShootAction::fillDamageDesc(PedInstance *pShooter,
     dmg.d_owner = pShooter;
     dmg.aimedLocW = aimedAt_;
     dmg.originLocW.convertFromTilePoint(pShooter->position());
+    // the weapon is located at half the size of the shooter : shooting from
+    // the feet, the line of fire could be blocked by the floor itself
+    dmg.originLocW.z += pShooter->sizeZ() >> 1;
 
     if (pWeapon->isInstanceOf(Weapon::Flamer)) {
-        // the weapon is located at half the size of the shooter
-        dmg.originLocW.z += pShooter->sizeZ() >> 1;
-
+        // the flame starts in front of the shooter
         switch(pShooter->getDiscreteDirection()) {
         case 0:
             dmg.originLocW.y += 200;

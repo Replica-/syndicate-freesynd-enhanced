@@ -23,6 +23,11 @@ upstream documentation, controls and known issues, see [README](README) and
     by FreeSynd and resampled with `SDL_AudioStream`. SDL_mixer's VOC loader could
     write out of bounds while resampling and crash at startup, and it failed to load
     some samples.
+- **Shots from mid-body**: every weapon except the flamer fired from the shooter's
+  feet, so the line of fire started at floor level. The floor itself could block it,
+  and shots sometimes landed under the agent's feet. Shots, the range limit, and the
+  line-of-fire checks (AI sight, "target in range", following a target) now all
+  start at half the shooter's height, as the flamer and the aim point already did.
 - **`--intro` option**: plays the intro movie even if it has already been played.
 - **Headless runs**: if no hardware renderer is available (for example with
   `SDL_VIDEODRIVER=dummy`), the game falls back to SDL's software renderer

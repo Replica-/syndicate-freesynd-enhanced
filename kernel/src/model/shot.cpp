@@ -35,7 +35,11 @@
 namespace fs_knl {
 
 void InstantImpactShot::inflictDamage(Mission *pMission) {
-    WorldPoint originLocW(dmg_.d_owner->position()); // origin of shooting
+    // origin of shooting : the weapon, at half the size of the shooter (see
+    // ShootAction::fillDamageDesc()). It used to be the shooter's feet, but then
+    // the line of fire started at floor level and could be blocked by the floor
+    // itself, so the impact landed under the shooter.
+    WorldPoint originLocW(dmg_.originLocW);
     /*printf("Origin loc %d %d %d\n", originLocW.x, originLocW.y, originLocW.z);*/
     // get how much impacts does the weapon generate
     int nbImpacts = dmg_.pWeapon->getClass()->impactsPerAmmo();

@@ -126,6 +126,7 @@ if (APPLE)
 	
 elseif (WIN32)
     install (TARGETS freesynd DESTINATION .)
+    fs_copy_extern_dlls(freesynd)
 else ()
     # We use the default installation directory
     install (TARGETS freesynd DESTINATION ${CMAKE_INSTALL_FULL_BINDIR})

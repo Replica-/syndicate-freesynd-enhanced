@@ -1,0 +1,112 @@
+{
+    // Launch configurations for Windows (MSVC debugger).
+    // All game configurations use the dev config in ./dev:
+    //   dev/freesynd.ini   -> points at ./data and ./game_data/SYNDICAT/DATA
+    //   dev/user/user.conf -> user settings and saves (dev/user/save)
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "name": "FreeSynd (Debug)",
+            "type": "cppvsdbg",
+            "request": "launch",
+            "program": "${workspaceFolder}/build/ninja-msvc-x64-debug/game/freesynd.exe",
+            "args": ["-i", "dev", "-u", "dev/user"],
+            "cwd": "${workspaceFolder}",
+            "console": "internalConsole",
+            "preLaunchTask": "Build Debug"
+        },
+        {
+            // The intro is normally played only once (play_intro in user.conf)
+            "name": "FreeSynd (Debug) - Intro",
+            "type": "cppvsdbg",
+            "request": "launch",
+            "program": "${workspaceFolder}/build/ninja-msvc-x64-debug/game/freesynd.exe",
+            "args": ["-i", "dev", "-u", "dev/user", "--intro"],
+            "cwd": "${workspaceFolder}",
+            "console": "internalConsole",
+            "preLaunchTask": "Build Debug"
+        },
+        {
+            "name": "FreeSynd (Debug) - Jump to mission",
+            "type": "cppvsdbg",
+            "request": "launch",
+            "program": "${workspaceFolder}/build/ninja-msvc-x64-debug/game/freesynd.exe",
+            "args": ["-i", "dev", "-u", "dev/user", "-m", "${input:missionId}"],
+            "cwd": "${workspaceFolder}",
+            "console": "internalConsole",
+            "preLaunchTask": "Build Debug"
+        },
+        {
+            "name": "FreeSynd (Debug) - No sound",
+            "type": "cppvsdbg",
+            "request": "launch",
+            "program": "${workspaceFolder}/build/ninja-msvc-x64-debug/game/freesynd.exe",
+            "args": ["-i", "dev", "-u", "dev/user", "-n"],
+            "cwd": "${workspaceFolder}",
+            "console": "internalConsole",
+            "preLaunchTask": "Build Debug"
+        },
+        {
+            "name": "FreeSynd (Debug) - Headless, no sound",
+            "type": "cppvsdbg",
+            "request": "launch",
+            "program": "${workspaceFolder}/build/ninja-msvc-x64-debug/game/freesynd.exe",
+            "args": ["-i", "dev", "-u", "dev/user", "-n"],
+            "cwd": "${workspaceFolder}",
+            "environment": [
+                { "name": "SDL_VIDEODRIVER", "value": "dummy" },
+                { "name": "SDL_AUDIODRIVER", "value": "dummy" }
+            ],
+            "console": "internalConsole",
+            "preLaunchTask": "Build Debug"
+        },
+        {
+            "name": "FreeSynd (Release)",
+            "type": "cppvsdbg",
+            "request": "launch",
+            "program": "${workspaceFolder}/build/ninja-msvc-x64-release/game/freesynd.exe",
+            "args": ["-i", "dev", "-u", "dev/user"],
+            "cwd": "${workspaceFolder}",
+            "console": "internalConsole",
+            "preLaunchTask": "Build Release"
+        },
+        {
+            "name": "FS Editor (Debug)",
+            "type": "cppvsdbg",
+            "request": "launch",
+            "program": "${workspaceFolder}/build/ninja-msvc-x64-debug/editor/fs-editor.exe",
+            "args": ["-i", "dev", "-u", "dev/user"],
+            "cwd": "${workspaceFolder}",
+            "console": "internalConsole",
+            "preLaunchTask": "Build Debug"
+        },
+        {
+            "name": "Tests: kernel",
+            "type": "cppvsdbg",
+            "request": "launch",
+            "program": "${workspaceFolder}/build/ninja-msvc-x64-debug/kernel/test/test-kernel.exe",
+            "args": [],
+            "cwd": "${workspaceFolder}",
+            "console": "internalConsole",
+            "preLaunchTask": "Build Debug"
+        },
+        {
+            "name": "Tests: engine",
+            "type": "cppvsdbg",
+            "request": "launch",
+            "program": "${workspaceFolder}/build/ninja-msvc-x64-debug/engine/test/test-engine.exe",
+            "args": [],
+            "cwd": "${workspaceFolder}",
+            "console": "internalConsole",
+            "preLaunchTask": "Build Debug"
+        }
+    ],
+    "inputs": [
+        {
+            "id": "missionId",
+            "type": "promptString",
+            "description": "Mission number (1-50)",
+            "default": "1"
+        }
+    ]
+}

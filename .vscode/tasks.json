@@ -1,0 +1,38 @@
+{
+    // Build tasks run through the CMake Tools extension, which sets up the
+    // MSVC developer environment (cl.exe, ninja) required by the presets.
+    // Without VS Code, use dev\build.cmd instead.
+    "version": "2.0.0",
+    "tasks": [
+        {
+            "label": "Build Debug",
+            "type": "cmake",
+            "command": "build",
+            "preset": "build-ninja-msvc-x64-debug",
+            "group": { "kind": "build", "isDefault": true },
+            "problemMatcher": ["$msCompile"]
+        },
+        {
+            "label": "Build Release",
+            "type": "cmake",
+            "command": "build",
+            "preset": "build-ninja-msvc-x64-release",
+            "group": "build",
+            "problemMatcher": ["$msCompile"]
+        },
+        {
+            "label": "Configure Debug",
+            "type": "cmake",
+            "command": "configure",
+            "preset": "ninja-msvc-x64-debug",
+            "problemMatcher": []
+        },
+        {
+            "label": "Configure Release",
+            "type": "cmake",
+            "command": "configure",
+            "preset": "ninja-msvc-x64-release",
+            "problemMatcher": []
+        }
+    ]
+}

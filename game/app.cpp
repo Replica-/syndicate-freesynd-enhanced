@@ -50,12 +50,13 @@
 #include "menus/gamemenufactory.h"
 #include "menus/gamemenuid.h"
 
-GameCliParam::GameCliParam():startMission_(-1), cheatCodes_("") {}
+GameCliParam::GameCliParam():startMission_(-1), cheatCodes_(""), forceIntro_(false) {}
 
 void GameCliParam::addOptions(CLI::App &app) {
     app.add_option("-m,--mission", startMission_, "Jump directly to the specified mission.")
         ->option_text("<id>")->check(CLI::Range(1, 50));
     app.add_option("-c,--cheat", cheatCodes_, "Set the list of cheatcodes separated by colon.")->option_text("<codes>");
+    app.add_flag("--intro", forceIntro_, "Play the intro even if it has already been played.");
 }
 
 App::App()
@@ -106,12 +107,16 @@ void App::doDestroy() {
  * \param start_mission Mission id used to start the application in debug mode
  * In standard mode start_mission is always -1.
  */
+bool App::isLoadIntroResources() {
+    return cliParam_.isForceIntro() || BaseApp::isLoadIntroResources();
+}
+
 /*!
  * This method returns the menu Id used to start the app.
  */
 int App::getStartMenuId() {
     if (cliParam_.getStartingMission() == -1) {
-        if (context_->isPlayIntro()) {
+        if (cliParam_.isForceIntro() || context_->isPlayIntro()) {
             // Update intro flag so intro won't be played next time
             context_->updateIntroFlag();
             return fs_game_menus::kMenuIdFliIntro;

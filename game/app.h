@@ -45,6 +45,8 @@ public:
     //! Returns true if user has set cheatcodes
     bool hasCheatCodes() { return cheatCodes_.length() != 0; }
 
+    bool isForceIntro() const { return forceIntro_; }
+
 protected:
     void addOptions(CLI::App &app) override;
 
@@ -64,6 +66,12 @@ private:
      * example -c "DO IT AGAIN:NUK THEM"
      */
     std::string cheatCodes_;
+
+    /*!
+     * Plays the intro even if it has already been played (option --intro).
+     * By default, the intro is only played once (see play_intro in user.conf).
+     */
+    bool forceIntro_;
 
 };
 
@@ -88,6 +96,8 @@ protected:
     void doDestroy() override;
     //! Define the menuid that will be displayed at the application's start
     int getStartMenuId() override;
+    //! Intro resources are also needed when the intro is forced on command line
+    bool isLoadIntroResources() override;
 
     fs_eng::CliParam & getCliParam() override {
         return cliParam_;

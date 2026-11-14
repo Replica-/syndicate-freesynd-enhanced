@@ -1,0 +1,12 @@
+# Build outputs
+/build/
+/inst/
+CMakeUserPresets.json
+/game/version.h
+
+# Original game data (copyrighted, not redistributable)
+/game_data/
+
+# Local dev run state
+/dev/user/save/
+game.log

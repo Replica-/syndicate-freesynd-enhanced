@@ -54,6 +54,18 @@ if (WIN32)
         ${CMAKE_SOURCE_DIR}/extern/SDL2_mixer/include
         ${CMAKE_SOURCE_DIR}/extern/SDL2_image/include
 	)
+
+	# Copy the bundled dlls next to an executable so it can be run
+	# directly from the build tree.
+	function(fs_copy_extern_dlls target)
+		file(GLOB FS_EXTERN_DLLS
+			${CMAKE_SOURCE_DIR}/extern/sdl2/lib/${FREESYND_ARCH}/*.dll
+			${CMAKE_SOURCE_DIR}/extern/SDL2_mixer/lib/${FREESYND_ARCH}/*.dll
+			${CMAKE_SOURCE_DIR}/extern/SDL2_image/lib/${FREESYND_ARCH}/*.dll
+		)
+		add_custom_command(TARGET ${target} POST_BUILD
+			COMMAND ${CMAKE_COMMAND} -E copy_if_different ${FS_EXTERN_DLLS} $<TARGET_FILE_DIR:${target}>)
+	endfunction()
 endif ()
 
 #################################

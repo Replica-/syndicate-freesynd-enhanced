@@ -136,19 +136,29 @@ bool SdlMixerAudio::init(EFrequency freq, EFormat fmt, EChannel chan, int chunks
             break;
     }
 
-    // initialize the player
-    pMidiPlayer = adl_init(frequency);
+    // Only allow SDL to change the frequency: libADLMIDI renders interleaved
+    // stereo, so the channel count must stay as requested (on a surround device,
+    // SDL would otherwise open e.g. 8 channels and the music would be garbled).
+    // SDL converts the stereo stream to the device layout itself.
+    if (Mix_OpenAudioDevice(frequency, format, channel, chunksize, NULL, SDL_AUDIO_ALLOW_FREQUENCY_CHANGE) < 0) {
+        FSERR(Log::k_FLG_SND, "SdlMixerAudio", "init", ("Failed to initialize SDL Mixer."));
+        return false;
+    }
+
+    int obtainedFrequency;
+    int obtainedChannels;
+    Mix_QuerySpec(&obtainedFrequency, NULL, &obtainedChannels);
+    LOG(Log::k_FLG_SND, "SdlMixerAudio", "init", ("Audio device opened at %d Hz, %d channels", obtainedFrequency, obtainedChannels));
+
+    // initialize the player at the real output rate so music plays at the correct speed and pitch
+    pMidiPlayer = adl_init(obtainedFrequency);
     if (!pMidiPlayer) {
         FSERR(Log::k_FLG_SND, "SdlMixerAudio", "init", ("Couldn't initialize ADLMIDI: %s\n", adl_errorString()));
+        Mix_CloseAudio();
         return false;
     }
 
     adl_switchEmulator(pMidiPlayer, ADLMIDI_EMU_NUKED);
-
-    if (Mix_OpenAudio(frequency, format, channel, chunksize) < 0) {
-        FSERR(Log::k_FLG_SND, "SdlMixerAudio", "init", ("Failed to initialize SDL Mixer."));
-        return false;
-    }
 
     // We set a hook so that we don't use SDL_Mixer built-in music playback but libADLMidi
     Mix_HookMusic(fs_audio_callback, pMidiPlayer);

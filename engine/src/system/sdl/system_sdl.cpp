@@ -95,6 +95,11 @@ void SystemSDL::initialize(bool fullscreen) {
 
     pRenderer_ = SDL_CreateRenderer(pWindow_, -1, SDL_RENDERER_ACCELERATED | SDL_RENDERER_PRESENTVSYNC);
     if (pRenderer_ == nullptr) {
+        // No hardware renderer (eg headless with SDL_VIDEODRIVER=dummy) : fall back to software
+        LOG(Log::k_FLG_GFX, "SystemSDL", "initialize", ("No accelerated renderer, using software renderer: %s", SDL_GetError()))
+        pRenderer_ = SDL_CreateRenderer(pWindow_, -1, SDL_RENDERER_SOFTWARE);
+    }
+    if (pRenderer_ == nullptr) {
         throw InitializationFailedException(std::format("Critical error, SDL could not be initialized! SDL Error :  {}", SDL_GetError()));
     }
 

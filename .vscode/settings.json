@@ -1,5 +1,32 @@
 {
     "cmake.configureOnOpen": false,
+    "cmake.useCMakePresets": "always",
+    "cmake.cmakePath": "C:/Program Files (x86)/Microsoft Visual Studio/2022/BuildTools/Common7/IDE/CommonExtensions/Microsoft/CMake/CMake/bin/cmake.exe",
+    "C_Cpp.default.configurationProvider": "ms-vscode.cmake-tools",
+
+    // Syndicate amber, so this window is easy to tell apart from other projects
+    "window.title": "freesynd-enhanced — ${activeEditorShort}${separator}${rootName}",
+    "workbench.colorCustomizations": {
+        "titleBar.activeBackground": "#8a3d00",
+        "titleBar.activeForeground": "#ffe0b8",
+        "titleBar.inactiveBackground": "#5a2800",
+        "titleBar.inactiveForeground": "#d8b48c",
+        "titleBar.border": "#ff9a1f",
+        "activityBar.background": "#3a1a00",
+        "activityBar.foreground": "#ffb347",
+        "activityBar.inactiveForeground": "#b3804d",
+        "activityBar.activeBorder": "#ff9a1f",
+        "activityBarBadge.background": "#ff9a1f",
+        "activityBarBadge.foreground": "#1a0d00",
+        "statusBar.background": "#8a3d00",
+        "statusBar.foreground": "#ffe0b8",
+        "statusBar.border": "#ff9a1f",
+        "statusBar.debuggingBackground": "#b30000",
+        "statusBar.debuggingForeground": "#ffffff",
+        "statusBar.noFolderBackground": "#8a3d00",
+        "statusBarItem.remoteBackground": "#ff9a1f",
+        "statusBarItem.remoteForeground": "#1a0d00"
+    },
     "files.associations": {
         "array": "cpp",
         "atomic": "cpp",

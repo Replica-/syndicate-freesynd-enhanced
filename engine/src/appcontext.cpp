@@ -93,6 +93,9 @@ void AppContext::readFreesyndIni(const std::string& iniFolder) {
     } else {
         throw InitializationFailedException("Cannot find key data_dir in config file freesynd.ini");
     }
+
+    // Optional : a folder with music files that replace the songs of the game
+    musicDir_ = freesyndIni.read<std::string>("music_dir", "");
 }
 
 /** \brief
@@ -132,6 +135,7 @@ void AppContext::readOrCreateUserConf(const std::string& userConfFolder) {
     lighting_ = userConf.read("lighting", true);
     test_files_ = userConf.read("test_data", true);
     soundVolume_ = userConf.read("sound_volume", 100);
+    musicVolume_ = userConf.read("music_volume", -1);
     const int languageID = userConf.read("language", 0);
     std::string defaultDir;
     fs_utl::File::getDefaultSaveFolder(defaultDir);
@@ -285,6 +289,19 @@ void AppContext::updateMissionPalette(int paletteId) {
     fs_utl::File::getUserConfFullPath(userConfPath);
     ConfigFile conf(userConfPath.string());
     conf.add("mission_palette", missionPalette_);
+
+    updateUserConf(conf, userConfPath);
+}
+
+void AppContext::updateMusicVolume(int volume) {
+    if (volume < 0) {
+        return;
+    }
+    musicVolume_ = volume;
+    std::filesystem::path userConfPath;
+    fs_utl::File::getUserConfFullPath(userConfPath);
+    ConfigFile conf(userConfPath.string());
+    conf.add("music_volume", volume);
 
     updateUserConf(conf, userConfPath);
 }

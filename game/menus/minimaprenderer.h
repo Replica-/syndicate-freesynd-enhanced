@@ -49,6 +49,8 @@ class MinimapRenderer {
      * render a tile.
      */
     enum EZoom {
+        //! Far : 2 pixels per tile (with a scanner)
+        ZOOM_FAR = 8,
         ZOOM_X1 = 6,
         ZOOM_X2 = 4,
         ZOOM_X3 = 2,
@@ -205,6 +207,8 @@ protected:
     void drawWeapons(const fs_eng::Palette & palette);
     //! Draw visible peds
     void drawPedestrians(const fs_eng::Palette & palette);
+    //! With a scanner : draw the doors so the entrances of buildings can be found
+    void drawDoors();
     //! Draw a circle to represent agents, police and guards.
     void drawPedCircle(const Point2D &screenPos, int type);
     //! Draw a circle on the minimap for the signal
@@ -286,6 +290,8 @@ private:
     fs_utl::BoolTimer mm_timer_weap;
     /*! A timer to control the blinking of pedestrians.*/
     fs_utl::BoolTimer mm_timer_ped;
+    //! True when one of our agents has a scanner : the minimap shows more of the map and more things
+    bool scannerEnabled_ = false;
     /*! Timer for the signal.*/
     fs_utl::Timer mm_timer_signal;
     /*!

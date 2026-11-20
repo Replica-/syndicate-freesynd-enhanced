@@ -49,6 +49,17 @@
             "preLaunchTask": "Build Debug"
         },
         {
+            // Starts mission 30 directly, all 4 agents with miniguns in every slot and every mod at version 3
+            "name": "FreeSynd (Debug) - Mission 30, miniguns, full mods",
+            "type": "cppvsdbg",
+            "request": "launch",
+            "program": "${workspaceFolder}/build/ninja-msvc-x64-debug/game/freesynd.exe",
+            "args": ["-i", "dev", "-u", "dev/user", "-m", "30", "--play", "-c", "MINIGUN SQUAD"],
+            "cwd": "${workspaceFolder}",
+            "console": "internalConsole",
+            "preLaunchTask": "Build Debug"
+        },
+        {
             // Saves the sprites of mission 1 (death animations first) in build/sprites_mission1.png, then quits
             "name": "Tools: Export sprite sheet",
             "type": "cppvsdbg",

@@ -158,6 +158,48 @@ void AnimationManager::frameBounds(uint16_t animId, int frameId, const Point2D &
     }
 }
 
+fs_eng::FSColor AnimationManager::frameLightColour(uint16_t animId, int frameId, const fs_eng::Palette &palette) {
+    assert(animId < firstFramePerAnim_.size());
+    const uint8_t kTransparent = 255;
+
+    GameSpriteFrame *f = &frames_[firstFramePerAnim_[animId]];
+    while (frameId) {
+        f = &frames_[f->nextFrame];
+        frameId--;
+    }
+
+    fs_eng::FSColor best = {255, 255, 255, 255};
+    double bestScore = 0.0;
+    GameSpriteFrameElement *e = &elements_[f->firstElement];
+    while (1) {
+        Sprite *pSprite = spritesManager_.sprite(e->sprite);
+        for (int y = 0; pSprite && y < pSprite->height(); y++) {
+            for (int x = 0; x < pSprite->width(); x++) {
+                uint8_t index = spritesManager_.pixelIndex(e->sprite, x, y);
+                if (index == kTransparent) {
+                    continue;
+                }
+                const fs_eng::FSColor &c = palette[index];
+                int maxChannel = std::max({c.r, c.g, c.b});
+                int minChannel = std::min({c.r, c.g, c.b});
+                // Bright and colourful
+                double score = maxChannel / 255.0 * (maxChannel - minChannel) / 255.0;
+                if (score > bestScore) {
+                    bestScore = score;
+                    best = c;
+                }
+            }
+        }
+        if (e->nextElement == 0)
+            break;
+        e = &elements_[e->nextElement];
+    }
+
+    int maxChannel = std::max({best.r, best.g, best.b, uint8_t(1)});
+    return {static_cast<uint8_t>(best.r * 255 / maxChannel), static_cast<uint8_t>(best.g * 255 / maxChannel),
+            static_cast<uint8_t>(best.b * 255 / maxChannel), 255};
+}
+
 bool AnimationManager::drawFrame(uint16_t animId, int frameId, const Point2D &screenPos, const fs_eng::FSColor *pTint)
 {
     assert(animId < firstFramePerAnim_.size());

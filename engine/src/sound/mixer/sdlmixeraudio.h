@@ -70,9 +70,20 @@ public:
     void pauseMusic() override;
     //! @copydoc Audio::resumeMusic()
     void resumeMusic() override;
+    //! @copydoc Audio::playMusicFile()
+    bool playMusicFile(const std::string &path, bool loop, double position, int fadeInMs) override;
+    //! @copydoc Audio::musicFilePosition()
+    double musicFilePosition() override;
+    //! @copydoc Audio::startCapture()
+    bool startCapture(std::function<void(const uint8_t *, int)> onSamples, int *pFrequency, int *pChannels,
+                      std::string *pFormat) override;
+    //! @copydoc Audio::stopCapture()
+    void stopCapture() override;
 
 private:
     void initObtainedAudioFormat();
+    //! Stops the music file being played and gives the music back to the MIDI player
+    void stopMusicFile();
 
 private:
     /*! True if the audio system has been initialized with success.*/

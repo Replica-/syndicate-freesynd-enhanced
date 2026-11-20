@@ -94,6 +94,9 @@ public:
     }
 
     uint16_t currentAnimationId() { return currentAnimationId_; }
+    //! The animation of AnimationManager being played, and its frame
+    uint16_t currentFramesAnimation() { return currentAnimation_.framesAnimation; }
+    uint8_t currentFrame() { return frame_; }
 
     // Draw the current animation at given position, with an optional tint (see AnimationManager::drawFrame())
     void draw(const Point2D &screenPos, uint16_t animOffset, const fs_eng::FSColor *pTint = nullptr);

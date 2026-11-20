@@ -150,6 +150,10 @@ bool BaseApp::initialize() {
         soundManager_.initialize(system_->getAudio(), param.isSoundDisabled(), isLoadIntroResources());
 
         music_.initialize(param.isSoundDisabled(), system_->getAudio());
+        music_.findMusicFiles(context_->musicDir());
+        if (context_->getMusicVolume() >= 0) {
+            music_.setVolume(context_->getMusicVolume());
+        }
 
         bool resInit = doInitialize();
         if (resInit) {
@@ -264,7 +268,13 @@ void BaseApp::waitForKeyPress() {
 
 void BaseApp::onQuitHandler([[maybe_unused]] QuitEvent *evt) {
     LOG(Log::k_FLG_INFO, "BaseApp", "onQuitHandler", ("Received Quit Evt : quitting"))
-    context_->updateSoundVolume(soundManager_.getVolume());
+    // A video being recorded is finished before quitting
+    recorder_.stop();
+    recorder_.waitForVideos();
+    // Without sound (option -n), the volume is unknown : the saved one is kept
+    if (!getCliParam().isSoundDisabled()) {
+        context_->updateSoundVolume(soundManager_.getVolume());
+    }
     running_ = false;
 }
 

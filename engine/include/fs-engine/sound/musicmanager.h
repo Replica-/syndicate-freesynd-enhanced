@@ -27,6 +27,7 @@
 
 #include <vector>
 #include <memory>
+#include <string>
 
 #include "fs-utils/common.h"
 #include "fs-utils/misc/singleton.h"
@@ -66,9 +67,22 @@ public:
     ~MusicManager();
 
     void initialize(bool disabled, Audio* audio);
+    /*!
+     * Looks for music files replacing the songs of the game in the given folder. Each
+     * file is named after its song (assassinate, danger, intro, game_completed,
+     * mission_failed, mission_completed) with the extension mp3, ogg, flac or wav.
+     */
+    void findMusicFiles(const std::string &folder);
+    //! Returns true if the song is played from a music file
+    bool hasMusicFile(MusicSong song) { return !musicFiles_[song].empty(); }
 
-    //! Plays the given song with possibility to loop
-    void playSong(MusicSong song, bool loopForEver = false);
+    /*!
+     * Plays the given song with possibility to loop. With resume, a song played from a
+     * music file starts where it was when another song replaced it.
+     */
+    void playSong(MusicSong song, bool loopForEver = false, bool resume = false);
+    //! Returns the song being played
+    MusicSong currentSong() { return currentSong_; }
     //! Stop playing the current song
     void stopCurrentSong();
     //! Pause the current song
@@ -100,6 +114,14 @@ protected:
     int volumeBeforeMute_;
     bool disabled_;
     Audio* audio_;
+    //! Number of songs
+    static const int kNbSongs = 6;
+    //! For each song, the music file that replaces it or empty
+    std::string musicFiles_[kNbSongs];
+    //! For each song played from a music file, where it was stopped (in seconds)
+    double songPositions_[kNbSongs] = {};
+    //! The song being played
+    MusicSong currentSong_ = kMusicSongNoSong;
 };
 
 };

@@ -25,6 +25,8 @@
 #ifndef AUDIO_H
 #define AUDIO_H
 
+#include <cstdint>
+#include <functional>
 #include <string>
 #include <memory>
 
@@ -110,6 +112,25 @@ public:
     virtual void pauseMusic() = 0;
     //! Unpause the music
     virtual void resumeMusic() = 0;
+    /*!
+     * Plays a music file (mp3, ogg, wav...) instead of the songs of the game, starting
+     * at the given position in seconds and fading in. Returns false if it can't be played.
+     */
+    virtual bool playMusicFile([[maybe_unused]] const std::string &path, [[maybe_unused]] bool loop,
+                               [[maybe_unused]] double position, [[maybe_unused]] int fadeInMs) { return false; }
+    //! Returns the position in seconds in the music file being played (0 if none)
+    virtual double musicFilePosition() { return 0.0; }
+
+    /*!
+     * Starts giving the final mix of the audio (music and sounds) to the given function,
+     * which is called in the audio thread. pFormat is set with the format of the samples
+     * as named by ffmpeg (like "s16le"). Returns false if the audio can't be captured.
+     */
+    virtual bool startCapture([[maybe_unused]] std::function<void(const uint8_t *, int)> onSamples,
+                              [[maybe_unused]] int *pFrequency, [[maybe_unused]] int *pChannels,
+                              [[maybe_unused]] std::string *pFormat) { return false; }
+    //! Stops giving the audio to the capture function
+    virtual void stopCapture() {}
 };
 
 #ifndef HAVE_SDL_MIXER

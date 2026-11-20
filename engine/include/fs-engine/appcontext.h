@@ -62,9 +62,14 @@ public:
     bool isHardwareRendering() { return hardwareRendering_; }
     void setHardwareRendering(bool hardware) { hardwareRendering_ = hardware; }
 
+    //! The folder with music files replacing the songs of the game (music_dir in freesynd.ini), empty if none
+    const std::string &musicDir() { return musicDir_; }
+
     bool isTestFiles() { return test_files_; }
     //! Return the sound volume parameter
     int getSoundVolume() { return soundVolume_; }
+    //! Return the music volume parameter, -1 if it was never set
+    int getMusicVolume() { return musicVolume_; }
 
     //! Sets the intro flag to false in the config file
     void updateIntroFlag();
@@ -72,6 +77,8 @@ public:
     void deactivateTestFlag();
     //! Sets the sound volume parameter to the given value in the config file
     void updateSoundVolume(int volume);
+    //! Saves the music volume in the user configuration
+    void updateMusicVolume(int volume);
 
     /*!
      * Returns the palette to use for missions instead of their own one (it sets the
@@ -113,6 +120,8 @@ private:
      * False (render_mode = software) keeps the original behaviour for comparison.
      */
     bool hardwareRendering_;
+    //! See musicDir()
+    std::string musicDir_;
     //! Palette to use for missions (time of day in software mode) : 0 is the palette of the mission
     int missionPalette_;
     //! Time of day in hardware mode : 0 is the mission's own look
@@ -132,6 +141,8 @@ private:
     fs_eng::FS_Lang curr_language_;
     //! Volume of sound : from 0 to 128
     int soundVolume_;
+    //! Music volume (music_volume in user.conf), -1 to keep the default one
+    int musicVolume_ = -1;
 };
 
 }

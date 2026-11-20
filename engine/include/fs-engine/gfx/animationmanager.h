@@ -105,6 +105,11 @@ public:
      * frame of an animation when drawn at screenPos.
      */
     void frameBounds(uint16_t animId, int frameId, const Point2D &screenPos, Point2D *pTopLeft, int *pWidth, int *pHeight);
+    /*!
+     * Returns the colour of the light in a frame : the colour of its brightest and most
+     * colourful pixel, at full brightness (like the lit lamp of a traffic light).
+     */
+    fs_eng::FSColor frameLightColour(uint16_t animId, int frameId, const fs_eng::Palette &palette);
     //! The next sprites are drawn with their colors multiplied by the given color (white for no change)
     void setColorModulation(fs_eng::FSColor color) { spritesManager_.setColorModulation(color); }
     //! How the next sprites are blended (kBlend is the normal way)

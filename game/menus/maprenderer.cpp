@@ -47,6 +47,8 @@ const int kMuzzleHeight = -18;
 //! Headlights : how far from the centre of the vehicle and how high, on screen
 const int kHeadlightDistance = 26;
 const int kHeadlightHeight = -8;
+//! Radius of the light of traffic lights
+const int kSemaphoreLightRadius = 56;
 //! Opacity of the tiles that are see-through (key B held)
 const uint8_t kSeeThroughAlpha = 60;
 //! Colour of the outline of where peds can walk
@@ -106,8 +108,8 @@ void MapRenderer::drawWalkableOutline(const Point2D &viewport) {
                 continue;
             }
             Point2D topLeft = tileCornerOnScreen(x, y, z, viewport);
-            if (topLeft.x < kGameplayPanelWidth - 64 || topLeft.x > g_System.screenWidth() + 64 ||
-                    topLeft.y < -64 || topLeft.y > fs_eng::kScreenHeight + 64) {
+            if (topLeft.x < kGameplayPanelWidth - 64 || topLeft.x > viewWidth() + 64 ||
+                    topLeft.y < -64 || topLeft.y > viewHeight() + 64) {
                 continue;
             }
             Point2D right = tileCornerOnScreen(x + 1, y, z, viewport);
@@ -154,6 +156,7 @@ void MapRenderer::drawBloodDrops(const Point2D &viewport) {
 void MapRenderer::init(fs_knl::Mission *pMission, SquadSelection *pSelection, bool withLighting, bool withEffects) {
     withEffects_ = withEffects;
     pMission_ = pMission;
+    semaphoreColours_.clear();
     pMap_ = pMission->get_map();
     pSelection_ = pSelection;
     lighting_.init(pMap_, withLighting);
@@ -169,8 +172,8 @@ void MapRenderer::render(const Point2D &viewport) {
     //  - Some advert panels lack a corner
     fs_knl::TilePoint mtp = pMap_->screenToTilePoint(viewport.x, viewport.y);
     int sw = mtp.tx;
-    int chk = g_System.screenWidth() / (fs_eng::Tile::kTileWidth / 2) + 2
-        + fs_eng::kScreenHeight / (fs_eng::Tile::kTileHeight / 3) + pMap_->maxZ() * 2;
+    int chk = viewWidth() / (fs_eng::Tile::kTileWidth / 2) + 2
+        + viewHeight() / (fs_eng::Tile::kTileHeight / 3) + pMap_->maxZ() * 2;
     int sh = mtp.ty - 8;
 
     int shm = sh + chk;
@@ -179,9 +182,9 @@ void MapRenderer::render(const Point2D &viewport) {
 
     listObjectsToDraw(viewport);
 
-    int cmw = viewport.x + g_System.screenWidth() -
+    int cmw = viewport.x + viewWidth() -
                 kGameplayPanelWidth + 128;
-    int cmh = viewport.y + fs_eng::kScreenHeight + 128;
+    int cmh = viewport.y + viewHeight() + 128;
     int cmx = viewport.x - kGameplayPanelWidth;
      //  z = 0 - is minimap data and mapdata
     int chky = sh < 0 ? 0 : sh;
@@ -276,7 +279,7 @@ void MapRenderer::render(const Point2D &viewport) {
 }
 
 /*!
- * Lit windows and neon signs emit light. The glass of windows shines.
+ * Lit windows, neon signs and traffic lights emit light. The glass of windows shines.
  */
 void MapRenderer::addObjectLight(fs_knl::MapObject *pObject, const Point2D &screenPos) {
     if (pObject->is(fs_knl::MapObject::kNaturePed)) {
@@ -323,6 +326,21 @@ void MapRenderer::addObjectLight(fs_knl::MapObject *pObject, const Point2D &scre
         int width, height;
         static_cast<fs_knl::AnimWindow *>(pStatic)->windowBounds(screenPos, &topLeft, &width, &height);
         lighting_.addWindowGlow(topLeft, width, height);
+    } else if (pStatic->type() == fs_knl::Static::smt_Semaphore && !pStatic->isDead()) {
+        // Traffic lights light up around them with the colour of the lit lamp, and shine
+        fs_knl::Semaphore *pSemaphore = static_cast<fs_knl::Semaphore *>(pStatic);
+        uint16_t anim = pSemaphore->lightAnimation();
+        int frame = pSemaphore->lightFrame();
+        uint32_t key = (static_cast<uint32_t>(anim) << 8) | static_cast<uint32_t>(frame);
+        auto it = semaphoreColours_.find(key);
+        if (it == semaphoreColours_.end()) {
+            it = semaphoreColours_.emplace(key, g_AnimMgr.frameLightColour(anim, frame, pMap_->getTileManager()->getPalette())).first;
+        }
+        Point2D topLeft;
+        int width, height;
+        g_AnimMgr.frameBounds(anim, frame, pObject->drawPosition(screenPos), &topLeft, &width, &height);
+        lighting_.addLight(topLeft.add(width / 2, height / 2), kSemaphoreLightRadius, it->second);
+        glowingObjects_.push_back({pObject, screenPos});
     } else if (pStatic->type() == fs_knl::Static::smt_Window) {
         // The glass of windows shines
         glowingObjects_.push_back({pObject, screenPos});
@@ -402,8 +420,8 @@ bool MapRenderer::isObjectInsideDrawingArea(fs_knl::MapObject *pObject, const Po
     // of appearance/disappearance of objects on screen. Otherwise they popup when
     // entering the display screen.
     return  objectViewport.x > (viewport.x - fs_eng::Tile::kTileWidth / 2) && objectViewport.y > viewport.y &&
-            objectViewport.x <= (viewport.x + g_System.screenWidth() - kGameplayPanelWidth + 10) &&
-            objectViewport.y <= (viewport.y + fs_eng::kScreenHeight + pObject->position().tz * 48);
+            objectViewport.x <= (viewport.x + viewWidth() - kGameplayPanelWidth + 10) &&
+            objectViewport.y <= (viewport.y + viewHeight() + pObject->position().tz * 48);
 }
 
 /**

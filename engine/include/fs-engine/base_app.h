@@ -34,6 +34,7 @@
 #include "fs-engine/appcontext.h"
 #include "fs-engine/gfx/animationmanager.h"
 #include "fs-engine/system/system.h"
+#include "fs-engine/system/recorder.h"
 #include "fs-engine/sound/soundmanager.h"
 #include "fs-engine/sound/musicmanager.h"
 #include "fs-engine/menus/menumanager.h"
@@ -152,6 +153,8 @@ private:
     SoundManager soundManager_;
     MusicManager music_;
     MenuManager menus_;
+    //! Records the game in a video (key F12 or the menu in missions)
+    Recorder recorder_;
 };
 
 }

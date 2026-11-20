@@ -244,6 +244,10 @@ public:
 
     void handleHit(DamageToInflict &d) override;
 
+    //! The animation (of AnimationManager) drawn for the light, and its frame
+    uint16_t lightAnimation() { return animationPlayer_->currentFramesAnimation() + animOffset_; }
+    int lightFrame() { return animationPlayer_->currentFrame(); }
+
 protected:
     void doUpdateState(uint32_t elapsed) override;
 

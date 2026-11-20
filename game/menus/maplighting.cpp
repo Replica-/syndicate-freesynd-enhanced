@@ -53,6 +53,11 @@ static double luminanceOf(const fs_eng::FSColor &c) {
     return (0.299 * c.r + 0.587 * c.g + 0.114 * c.b) / 255.0;
 }
 
+//! White pixels on the roads (little lights) are this bright at least, with little colour
+const double kRoadLightLuminance = 0.8;
+const int kRoadLightMaxTint = 60;
+//! The lights of the roads keep this part of their brightness in the dark
+const double kRoadLightShine = 0.6;
 //! Pixels brighter than this (0 to 1) start to shine in the dark
 const double kShineStart = 0.62;
 //! Pixels this bright (0 to 1) keep all their brightness in the dark
@@ -136,7 +141,7 @@ void MapLighting::init(fs_knl::Map *pMap, bool enabled) {
         pConeTexture_->setBlendMode(fs_eng::FSTexture::BlendMode::kAdd);
 
         pLightMap_ = g_System.createTexture();
-        pLightMap_->createRenderTargetTexture(fs_eng::kMaxScreenWidth, fs_eng::kScreenHeight);
+        pLightMap_->createRenderTargetTexture(kMaxMapViewWidth, kMaxMapViewHeight);
     }
 }
 
@@ -250,6 +255,8 @@ void MapLighting::createTileMasks() {
         }
         Point2D loc = pTile->textureLocation();
         Glow glow = tileSetting(id).glow;
+        // The little white lights painted on the roads glow a bit, unless the tile has settings
+        bool roadLights = pTile->isRoad() && tileSettings_.find(id) == tileSettings_.end();
         for (int y = 0; y < fs_eng::Tile::kTileHeight; y++) {
             for (int x = 0; x < fs_eng::Tile::kTileWidth; x++) {
                 uint8_t index = pTileManager->pixelIndex(pTile, x, y);
@@ -264,6 +271,11 @@ void MapLighting::createTileMasks() {
                 if (glow == Glow::kFull) {
                     // The whole tile keeps its brightness
                     shine = 1.0;
+                } else if (roadLights) {
+                    const fs_eng::FSColor &c = palette[index];
+                    bool white = luminance >= kRoadLightLuminance &&
+                                 (std::max)({c.r, c.g, c.b}) - (std::min)({c.r, c.g, c.b}) < kRoadLightMaxTint;
+                    shine = white ? kRoadLightShine : 0.0;
                 } else if (glow == Glow::kNone) {
                     shine = 0.0;
                 }
@@ -492,11 +504,11 @@ void MapLighting::addGlow(const Point2D &pos, int radius, fs_eng::FSColor colour
     glows_.push_back({pos, radius, radius, colour, false, 0.0});
 }
 
-void MapLighting::applyLights(fs_eng::FSTexture *pMapTexture, fs_eng::FSColor ambient,
+void MapLighting::applyLights(fs_eng::FSTexture *pMapTexture, fs_eng::FSColor ambient, int viewWidth, int viewHeight,
                               const std::function<void()> &drawGlowingSprites) {
     // The light map starts with the ambient light
     pLightMap_->setAsRenderTarget();
-    g_System.drawFillRect({0, 0}, g_System.screenWidth(), fs_eng::kScreenHeight, ambient);
+    g_System.drawFillRect({0, 0}, viewWidth, viewHeight, ambient);
 
     // The bright pixels of the tiles shine : the tiles are drawn in the same order as
     // on the map so the ones in front hide the ones behind
@@ -543,8 +555,7 @@ void MapLighting::applyLights(fs_eng::FSTexture *pMapTexture, fs_eng::FSColor am
     // Then the map is multiplied by the light map
     pMapTexture->setAsRenderTarget();
     pLightMap_->setBlendMode(fs_eng::FSTexture::BlendMode::kMultiply);
-    pLightMap_->renderScaled({0, 0}, g_System.screenWidth(), fs_eng::kScreenHeight,
-        {0, 0}, g_System.screenWidth(), fs_eng::kScreenHeight);
+    pLightMap_->renderScaled({0, 0}, viewWidth, viewHeight, {0, 0}, viewWidth, viewHeight);
     pLightMap_->setBlendMode(fs_eng::FSTexture::BlendMode::kNone);
 
     // Glows are added to the colours of the map

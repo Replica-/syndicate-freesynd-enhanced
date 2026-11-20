@@ -49,6 +49,13 @@ class Map;
  * light of the time of day plus a soft circle of light around each light. They show
  * when the scene is darker than the mission's own look (dusk, night...).
  */
+/*!
+ * The map is drawn in a texture this big at most : when zoomed out, it shows more of the
+ * map than the screen (see GameplayMenu).
+ */
+const int kMaxMapViewWidth = 2048;
+const int kMaxMapViewHeight = 672;
+
 class MapLighting {
 public:
     //! How the pixels of a tile shine in the dark
@@ -142,7 +149,7 @@ public:
      * drawGlowingSprites is called while the light map is drawn, with sprites drawn
      * additively : their pixels shine in the dark.
      */
-    void applyLights(fs_eng::FSTexture *pMapTexture, fs_eng::FSColor ambient,
+    void applyLights(fs_eng::FSTexture *pMapTexture, fs_eng::FSColor ambient, int viewWidth, int viewHeight,
                      const std::function<void()> &drawGlowingSprites = nullptr);
 
 private:

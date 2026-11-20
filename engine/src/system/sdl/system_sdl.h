@@ -24,6 +24,8 @@
 #ifndef SYSTEM_SDL_H
 #define SYSTEM_SDL_H
 
+#include <vector>
+
 #include <SDL.h>
 
 #include "fs-engine/system/system.h"
@@ -89,6 +91,7 @@ public:
     void drawLine(Point2D start, Point2D end, fs_eng::FSColor color) override;
     void drawRect(Point2D pos, int width, int height, fs_eng::FSColor color) override;
     void drawFillRect(Point2D pos, int width, int height, fs_eng::FSColor color) override;
+    void drawBlendedRect(Point2D pos, int width, int height, fs_eng::FSColor color) override;
     void drawFillPolygon(const Point2D *points, int nbPoints, fs_eng::FSColor color) override;
 
     //! Returns the mouse pointer coordinates
@@ -106,9 +109,7 @@ public:
         return keyModState_;
     }
 
-    bool isKeyModStatePressed(const int keyMod) override {
-        return (keyModState_ & keyMod) != 0;
-    }
+    bool isKeyModStatePressed(const int keyMod) override;
 
     //! Call this method to activate the text event
     void startReceiveText() override;
@@ -136,6 +137,8 @@ protected:
     int screenWidth_ = fs_eng::kScreenWidth;
     //! True when the screen can be wider than kScreenWidth (hardware mode)
     bool wideScreenEnabled_ = false;
+    //! The pixels of the screen read for the video being recorded
+    std::vector<uint8_t> recordPixels_;
     /*! A constant that holds the cursor icon width and height.*/
     static const int kCursorWidth;
     /*! Cursor visibility.*/

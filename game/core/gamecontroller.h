@@ -113,6 +113,8 @@ private:
     void cheatAccelerateTime();
     void cheatFemaleRecruits();
     void cheatEquipFancyWeapons();
+    //! Fills the weapon slots of all agents with miniguns
+    void cheatEquipMiniguns();
 
 private:
     /*!

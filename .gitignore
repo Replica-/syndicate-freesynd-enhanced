@@ -9,4 +9,5 @@ CMakeUserPresets.json
 
 # Local dev run state
 /dev/user/save/
+/dev/user/recordings/
 game.log

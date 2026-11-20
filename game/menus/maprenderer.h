@@ -33,6 +33,7 @@
 
 #include "fs-utils/common.h"
 #include "fs-engine/enginecommon.h"
+#include "fs-engine/system/system.h"
 #include "fs-utils/log/log.h"
 #include "fs-kernel/model/position.h"
 #include "fs-kernel/model/mission.h"
@@ -155,6 +156,11 @@ public:
      * almost transparent so the inside of buildings can be seen. -1 for the normal view.
      */
     void setSeeThroughLevel(int level) { seeThroughLevel_ = level; }
+    /*!
+     * The map is drawn from the left of the screen to viewWidth and from the top to
+     * viewHeight : more than the screen when zoomed out.
+     */
+    void setViewSize(int viewWidth, int viewHeight) { viewWidth_ = viewWidth; viewHeight_ = viewHeight; }
     //! Draws the outline of where peds can walk at the see-through level
     void drawWalkableOutline(const Point2D &viewport);
     //! Returns where the given point of the map is on screen, on the floor
@@ -168,7 +174,7 @@ public:
     //! Applies the lights to the map drawn in pMapTexture, with the given ambient light
     void applyLights(fs_eng::FSTexture *pMapTexture, fs_eng::FSColor ambient) {
         // Windows shine in the dark
-        lighting_.applyLights(pMapTexture, ambient, [this]() {
+        lighting_.applyLights(pMapTexture, ambient, viewWidth(), viewHeight(), [this]() {
             for (const auto &[pObject, screenPos] : glowingObjects_) {
                 pObject->draw(screenPos);
             }
@@ -211,10 +217,17 @@ private:
     MapLighting lighting_;
     //! The objects drawn in the current frame that shine in the dark (windows), with where they were drawn
     std::vector<std::pair<fs_knl::MapObject *, Point2D>> glowingObjects_;
+    //! Colour of the light of traffic lights, by animation and frame (see addObjectLight())
+    std::map<uint32_t, fs_eng::FSColor> semaphoreColours_;
     //! True to draw effects like blood sprays (hardware mode)
     bool withEffects_ = false;
     //! Level from which tiles are see-through, -1 for none
     int seeThroughLevel_ = -1;
+    //! Size of the view (see setViewSize()), 0 for the size of the screen
+    int viewWidth_ = 0;
+    int viewHeight_ = 0;
+    int viewWidth() { return viewWidth_ > 0 ? viewWidth_ : g_System.screenWidth(); }
+    int viewHeight() { return viewHeight_ > 0 ? viewHeight_ : fs_eng::kScreenHeight; }
     //! Screen position of the corner of a tile at the given level
     Point2D tileCornerOnScreen(int x, int y, int z, const Point2D &viewport);
 

@@ -19,10 +19,10 @@ upstream documentation, controls and known issues, see [README](README) and
   | Company colours | the 8 original colours plus 16 new ones that are not limited by the palette | the 8 original colours (a new colour is shown as the closest original one) |
   | Agents' hats in missions | your agents in your company colour, enemy agents in their syndicate's colour | the original dark red for everyone |
   | Lighting in missions | the sun comes from the top left: buildings cast shadows on floors, roads and roofs, slopes facing away are darker, people in shadow are darker. The shading is weaker at dusk and at night (see the time of day below) | flat, as in the original |
-  | Lights in missions | lamps and other light fittings in the map, lit windows and neon signs light up their surroundings, pixel by pixel. Lit windows and window glass shine in the dark; stairs never count as lights. Vehicles have headlight cones and red rear lights. They show when the scene is darker than the mission's own look (dusk, night, dawn) | none |
+  | Lights in missions | lamps and other light fittings in the map, lit windows, neon signs and traffic lights (in the colour of their lamp) light up their surroundings, pixel by pixel. Lit windows, window glass and the little lights along the roads shine in the dark; stairs never count as lights. Vehicles have headlight cones and red rear lights. They show when the scene is darker than the mission's own look (dusk, night, dawn) | none |
   | Muzzle flashes | firing lights up the area around the shooter, coloured by weapon (yellow for guns, red for the laser, blue for the Gauss gun, orange for the flamer), and glows even by day | none |
   | Blood | a hit sprays blood out of the target, away from the shooter | none |
-  | Zoom in missions | mouse wheel over the map, from 1× to 3×, centred on the cursor | no zoom |
+  | Zoom in missions | mouse wheel over the map, from 0.6× (more of the map) to 3×, centred on the cursor | no zoom |
   | Wide screens | in fullscreen (or a window made wider), missions fill the whole width and show more of the map; other screens keep their size, centred. The window can be resized | 640×400 with black bars |
   | Map view limits | the view can be scrolled over the whole map, as people can walk outside the mission area | limited to the mission area |
   | Menu transitions | about 2.8× faster, evenly paced on the display refresh; transition sounds at 80% volume | original timing and volume |
@@ -59,10 +59,18 @@ upstream documentation, controls and known issues, see [README](README) and
   can walk at that level, and clicks go to that level instead of the roof.
 - **Double press 1–4** in a mission to centre the view on that agent (the second
   press must come within 0.4 s).
-- **Escape menu in missions**: Escape pauses the game and opens a menu (Resume, Time
-  of day, Fullscreen, Lighting, Light editor, Abort mission) instead of aborting the mission
-  straight away. Press Escape again to resume. *Lighting* turns the shadows and
-  lights on or off (hardware mode, saved as `lighting` in `user.conf`).
+- **Escape menu in missions**: Escape pauses the game and opens an options screen in
+  a see-through green panel with a green border, like the game's menus: Resume, Time of day, Fullscreen, Lighting, Light
+  editor, Sound and Music volume, Record video, Abort mission. Left click changes a
+  value, right click goes back. Press Escape again to resume. *Lighting* turns the
+  shadows and lights on or off (hardware mode, saved as `lighting` in `user.conf`);
+  the volumes are saved as `sound_volume` and `music_volume`.
+- **Video recording**: F12 (anywhere in the game) or *Record video* in the Escape menu
+  starts and stops recording the game with its sound (music and sound effects) in an
+  MP4 file, in the `recordings` folder next to `user.conf`. A red dot blinks in the top
+  right corner while recording (it's not in the video). It needs
+  [ffmpeg](https://ffmpeg.org/) in the PATH; the sound is added to the video in the
+  background a few seconds after the recording stops.
 - **Light editor** (hardware mode): *Light editor* in the Escape menu keeps the game
   paused and lets you fix how each map tile is lit. Hover the map to see the tile
   under the mouse (white outline), click to select it (every copy on screen gets a
@@ -75,6 +83,17 @@ upstream documentation, controls and known issues, see [README](README) and
   Changes show straight away. *Save* writes `data/ref/tile_lights.ini`, which is in
   the repository, so the settings can be committed. WASD and the mouse wheel still
   move and zoom the view. Escape or *Close* goes back to the game.
+- **Replacement music**: set `music_dir` in `freesynd.ini` to a folder of music files
+  named after the game's songs: `assassinate` (the mission song), `danger` (combat),
+  `intro`, `mission_completed`, `mission_failed`, `game_completed`, as mp3, ogg, flac
+  or wav. Songs without a file keep the original MIDI music. With a `danger` file,
+  missions switch to it while agents of a rival syndicate are near yours, as in the
+  original game, and back to the mission song 8 s after they've gone, each song going
+  on where it stopped. The dev configuration uses
+  `game_data/music`, which is not in the repository (music files are not ours to share).
+- **Radar**: it shows a bit more of the map around the agent (6 pixels per tile
+  instead of 8). With a scanner it shows a much bigger area (2 pixels per tile
+  instead of 4), plus doors (cyan), criminals (orange) and armed people (red).
 - **Alt+Enter** switches between fullscreen and window, on any screen. The choice
   is saved (`fullscreen` in `user.conf`).
 - **Time of day override**: in the Escape menu, click *Time of day* to cycle through
@@ -176,6 +195,9 @@ Development options:
 
 - `-m <n> --play` starts mission `n` directly with the default squad, without the
   briefing and equipment screens.
+- `-c "MINIGUN SQUAD"` (cheat): all weapons and mods researched, every agent with
+  version 3 mods and miniguns in all 8 weapon slots. The VS Code launch
+  configuration *Mission 30, miniguns, full mods* uses it with `-m 30 --play`.
 - `-m <n> --play --export-sprites <file.png>` saves the sprites of mission `n`, read
   from the original files and drawn with the mission palette: the blood pool and the
   death animations of agents first, then the whole sprite sheet. The **Tools: Export

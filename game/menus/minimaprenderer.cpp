@@ -35,6 +35,10 @@ const int GamePlayMinimapRenderer::kMinimapTextureSize = 512;
 const int GamePlayMinimapRenderer::kCircleTextureWidth = 32;
 const int GamePlayMinimapRenderer::kCircleTextureHeight = 16;
 const int GamePlayMinimapRenderer::kCircleSpriteSize = 7;
+//! With a scanner : colours of armed people, criminals and doors
+const fs_eng::FSColor kScannerArmedColour = {255, 60, 40, 255};
+const fs_eng::FSColor kScannerCriminalColour = {255, 150, 30, 255};
+const fs_eng::FSColor kScannerDoorColour = {60, 220, 255, 255};
 
 void MinimapRenderer::setZoom(EZoom zoom) {
     zoom_ = zoom;
@@ -255,11 +259,13 @@ void GamePlayMinimapRenderer::updateRenderingInfos() {
 }
 
 /*!
- * Setting the scanner on or off will play on the zooming level.
- * \param b_enabled True will set a zoom of X1, else X3.
+ * Setting the scanner on or off will play on the zooming level : with a scanner,
+ * the minimap shows a much bigger area (2 pixels per tile instead of 6) and more things.
+ * \param b_enabled True will set a zoom of FAR, else X2.
  */
 void GamePlayMinimapRenderer::setScannerEnabled(bool b_enabled) {
-    setZoom(b_enabled ? ZOOM_X1 : ZOOM_X3);
+    scannerEnabled_ = b_enabled;
+    setZoom(b_enabled ? ZOOM_FAR : ZOOM_X2);
 }
 
 /*!
@@ -557,6 +563,9 @@ void GamePlayMinimapRenderer::render(const fs_eng::Palette & palette) {
     g_System.drawVLine({crossPos_.x, 0}, kMiniMapSizePx, palette[fs_eng::kPaletteGameColorBlack]);
 
     // draw all visible elements on the minimap
+    if (scannerEnabled_) {
+        drawDoors();
+    }
     drawPedestrians(palette);
     drawWeapons(palette);
     drawVehicles(palette);
@@ -585,12 +594,22 @@ void GamePlayMinimapRenderer::drawVehicles(const fs_eng::Palette & palette) {
                 drawPedCircle(screenPos, 0);
 
             } else {
-                int vehicle_size = (zoom_ == ZOOM_X1) ? 2 : 4;
+                int vehicle_size = pixpertile_ <= 4 ? 2 : 4;
                 /* int px = mapToMiniMapX(tx + 1, p_vehicle->offX()) - vehicle_size / 2;
                 int py = mapToMiniMapY(ty + 1, p_vehicle->offY()) - vehicle_size / 2; */
 
                 g_System.drawFillRect(screenPos, vehicle_size, vehicle_size, palette[fs_eng::kPaletteGameColorWhite]);
             }
+        }
+    }
+}
+
+void GamePlayMinimapRenderer::drawDoors() {
+    for (size_t i = 0; i < p_mission_->numStatics(); i++) {
+        fs_knl::Static *pStatic = p_mission_->statics(i);
+        if ((pStatic->type() == fs_knl::Static::smt_Door || pStatic->type() == fs_knl::Static::smt_LargeDoor) &&
+                isVisible(pStatic)) {
+            g_System.drawFillRect(mapToScreenPosition(pStatic->position()), 2, 2, kScannerDoorColour);
         }
     }
 }
@@ -638,9 +657,14 @@ void GamePlayMinimapRenderer::drawPedestrians(const fs_eng::Palette & palette) {
                         // white rect 2x2 (opaque and transparent blinking)
                         int ped_width = 2;
                         int ped_height = 2;
-                        if (mm_timer_ped.state()) {
-                            // draw the square
-                            g_System.drawFillRect(screenPos, ped_width, ped_height, palette[fs_eng::kPaletteGameColorWhite]);
+                        if (scannerEnabled_ && p_ped->isArmed()) {
+                            // The scanner shows armed people, always
+                            g_System.drawFillRect(screenPos.add(-1, -1), 3, 3, kScannerArmedColour);
+                        } else if (mm_timer_ped.state()) {
+                            // draw the square : the scanner shows criminals in their own colour
+                            bool criminal = scannerEnabled_ && p_ped->type() == fs_knl::PedInstance::kPedTypeCriminal;
+                            g_System.drawFillRect(screenPos, ped_width, ped_height,
+                                                  criminal ? kScannerCriminalColour : palette[fs_eng::kPaletteGameColorWhite]);
                         }
                     break;
                     }

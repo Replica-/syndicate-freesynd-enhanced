@@ -133,9 +133,14 @@ protected:
         kEscMenuFullScreen = 2,
         kEscMenuLighting = 3,
         kEscMenuLightEditor = 4,
-        kEscMenuAbort = 5,
-        kEscMenuNbItems = 6
+        kEscMenuSound = 5,
+        kEscMenuMusic = 6,
+        kEscMenuRecord = 7,
+        kEscMenuAbort = 8,
+        kEscMenuNbItems = 9
     };
+    //! The items shown in the menu, in order (some only exist in hardware mode)
+    std::vector<int> escMenuItems();
     //! Opens or closes the menu. The game is paused while it's open
     void showEscMenu(bool show);
     //! Returns the item under the given point or -1
@@ -174,6 +179,8 @@ protected:
 
     //! Scrolls the view with the keys held down and the edges of the screen. Returns true if it moved
     bool scrollView();
+    //! Plays the combat song while rival agents are near ours, then the mission song again (with music files)
+    void updateCombatMusic();
     
     //! Scroll the map horizontally.
     bool scrollOnX();
@@ -256,6 +263,11 @@ protected:
     std::unique_ptr<fs_eng::FSTexture> pMapTexture_;
     //! Maximum zoom of the map
     static const double kMaxZoom;
+    //! Minimum zoom of the map : below 1, more of the map is shown
+    static const double kMinZoom;
+    //! Size of the part of the map texture that is shown : bigger than the screen when zoomed out
+    double viewWidth();
+    double viewHeight();
     //! Zoom of the map : 1 is the original size
     double zoom_;
     //! True when the menu opened with Escape is shown
@@ -264,6 +276,10 @@ protected:
     int escMenuHover_;
     //! True if the game was paused (with P) before the Escape menu was opened
     bool pausedBeforeEscMenu_;
+    //! True when the last try to record a video failed (ffmpeg is missing)
+    bool recordFailed_ = false;
+    //! When rival agents were last near ours (0 if never), to play the combat song
+    uint32_t lastDangerTicks_ = 0;
     //! True when the light editor is shown
     bool lightEditor_ = false;
     //! Id of the tile edited in the light editor or -1

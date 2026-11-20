@@ -63,13 +63,48 @@ void MusicManager::initialize(bool disabled, Audio* audio)
     LOG(Log::k_FLG_SND, "MusicManager", "initialize", ("Music initialized"))
 }
 
+void MusicManager::findMusicFiles(const std::string &folder) {
+    const char *kSongNames[kNbSongs] = {"intro", "assassinate", "danger", "game_completed", "mission_failed", "mission_completed"};
+    const char *kExtensions[] = {"mp3", "ogg", "flac", "wav"};
+    for (int song = 0; song < kNbSongs; song++) {
+        musicFiles_[song].clear();
+        if (folder.empty()) {
+            continue;
+        }
+        for (const char *extension : kExtensions) {
+            fs::path path = fs::path(folder) / (std::string(kSongNames[song]) + "." + extension);
+            std::error_code error;
+            if (fs::is_regular_file(path, error)) {
+                musicFiles_[song] = path.string();
+                FSINFO(Log::k_FLG_SND, "MusicManager", "findMusicFiles", ("Song %s is played from %s", kSongNames[song], musicFiles_[song].c_str()))
+                break;
+            }
+        }
+    }
+}
+
 /*!
  * Play the given track.
- * @param song 
+ * @param song
  * @param loops True to loop indefinetly
+ * @param resume True to start a song played from a music file where it was stopped
  */
-void MusicManager::playSong(MusicSong song, bool loopForEver) {
+void MusicManager::playSong(MusicSong song, bool loopForEver, bool resume) {
     if (!disabled_) {
+        // Keep where the current song was, to resume it later
+        if (currentSong_ != kMusicSongNoSong && hasMusicFile(currentSong_)) {
+            songPositions_[currentSong_] = audio_->musicFilePosition();
+        }
+        currentSong_ = song;
+
+        if (song != kMusicSongNoSong && hasMusicFile(song)) {
+            // A short fade in when switching songs
+            const int kFadeInMs = resume ? 1500 : 500;
+            if (audio_->playMusicFile(musicFiles_[song], loopForEver, resume ? songPositions_[song] : 0.0, kFadeInMs)) {
+                return;
+            }
+        }
+
         int songNb;
 
         MusicFile fileToOpen = (song == kMusicSongIntro) ? kMusicFileIntro : kMusicFileGame;

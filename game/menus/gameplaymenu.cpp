@@ -36,6 +36,7 @@
 #include "fs-engine/gfx/tilemanager.h"
 #include "fs-engine/sound/musicmanager.h"
 #include "fs-engine/sound/soundmanager.h"
+#include "fs-engine/system/recorder.h"
 #include "menus/gamemenuid.h"
 #include "fs-engine/menus/fliplayer.h"
 #include "fs-kernel/model/vehicle.h"
@@ -53,6 +54,11 @@ const int SCROLL_STEP = 16;
 
 const Point2D GameplayMenu::kMiniMapScreenPos = {0, 46 + 44 + 10 + 46 + 44 + 15 + 2 * 32 + 2};
 const double GameplayMenu::kMaxZoom = 3.0;
+/*!
+ * Zoomed out, the map texture shows more of the map : it must be big enough
+ * (kMaxMapViewWidth >= panel + (kMaxScreenWidth - panel) / kMinZoom).
+ */
+const double GameplayMenu::kMinZoom = 0.6;
 //! Each notch of the mouse wheel multiplies or divides the zoom by this value
 const double kZoomStep = 1.25;
 //! Maximum time in ms between two presses of the same agent key to center the view on the agent
@@ -296,8 +302,8 @@ void GameplayMenu::initWorldCoords()
  */
 void GameplayMenu::centerViewOnPed(fs_knl::PedInstance *p_leader)
 {
-    zoomOriginX_ = MapRenderer::kGameplayPanelWidth + (mapAreaWidth() - mapAreaWidth() / zoom_) / 2;
-    zoomOriginY_ = (fs_eng::kScreenHeight - fs_eng::kScreenHeight / zoom_) / 2;
+    zoomOriginX_ = MapRenderer::kGameplayPanelWidth + (std::max)(0.0, (mapAreaWidth() - mapAreaWidth() / zoom_) / 2);
+    zoomOriginY_ = (std::max)(0.0, (fs_eng::kScreenHeight - fs_eng::kScreenHeight / zoom_) / 2);
 
     // get the ped position on the map
     fs_knl::TilePoint leaderPos(p_leader->tileX(),
@@ -306,8 +312,9 @@ void GameplayMenu::centerViewOnPed(fs_knl::PedInstance *p_leader)
                                 0, 0);
     Point2D start;
     mission_->get_map()->tileToScreenPoint(leaderPos, &start);
-    start.x -= mapAreaWidth() / 2;
-    start.y -= fs_eng::kScreenHeight / 2;
+    // Zoomed out, the view is bigger than the screen
+    start.x -= static_cast<int>(viewWidth() - MapRenderer::kGameplayPanelWidth) / 2;
+    start.y -= static_cast<int>(viewHeight()) / 2;
 
     if (start.x < 0)
         start.x = 0;
@@ -366,7 +373,7 @@ bool GameplayMenu::handleBeforeShow() {
     if (g_Ctx.isHardwareRendering() && !pMapTexture_) {
         pMapTexture_ = g_System.createTexture();
         // The texture is big enough for the widest screen
-        pMapTexture_->createRenderTargetTexture(fs_eng::kMaxScreenWidth, fs_eng::kScreenHeight);
+        pMapTexture_->createRenderTargetTexture(kMaxMapViewWidth, kMaxMapViewHeight);
     }
 
     // In hardware mode, agents wear the color of their company on their hat
@@ -405,6 +412,7 @@ bool GameplayMenu::handleBeforeShow() {
 
     // play game track
     g_MusicMgr.playSong(fs_eng::MusicManager::kMusicSongAssassinate, true);
+    lastDangerTicks_ = 0;
     
     menu_manager_->resetSinceMouseDown();
 
@@ -451,6 +459,7 @@ bool GameplayMenu::handleTick(uint32_t elapsed)
     mm_renderer_.handleTick(elapsed);
 
     updateIPALevelMeters(elapsed);
+    updateCombatMusic();
 
     if (change) {
         // force target to update
@@ -460,6 +469,47 @@ bool GameplayMenu::handleTick(uint32_t elapsed)
     updateMissionHint(elapsed);
 
     return true;
+}
+
+/*!
+ * As in the original game, the combat song plays while agents of a rival syndicate are
+ * near ours, and the mission song comes back this long (in ms) after they've gone.
+ */
+const uint32_t kCombatMusicDuration = 8000;
+//! Rival agents closer than this to one of ours (in world units, 256 per tile) start the combat song
+const int kCombatMusicDistance = 8 * 256;
+
+void GameplayMenu::updateCombatMusic() {
+    // Only with music files : the original MIDI music keeps a single song in missions
+    if (!g_MusicMgr.hasMusicFile(fs_eng::MusicManager::kMusicSongDanger) || !mission_->isRunning()) {
+        return;
+    }
+    uint32_t now = g_System.getTicks();
+    // Persuaded rival agents are on our side
+    fs_knl::Squad *pSquad = mission_->getSquad();
+    for (size_t i = pSquad->size(); i < mission_->numPeds(); i++) {
+        fs_knl::PedInstance *pRival = mission_->ped(i);
+        if (pRival->type() != fs_knl::PedInstance::kPedTypeAgent || pRival->isOurAgent() || pRival->isPersuaded() ||
+                !pRival->isAlive()) {
+            continue;
+        }
+        for (size_t slot = 0; slot < fs_knl::Squad::kMaxSlot; slot++) {
+            fs_knl::PedInstance *pAgent = pSquad->member(slot);
+            if (pAgent && pAgent->isAlive() && pAgent->isCloseTo(pRival, kCombatMusicDistance)) {
+                lastDangerTicks_ = now;
+                break;
+            }
+        }
+    }
+
+    // Each song goes on where it was stopped
+    bool combat = lastDangerTicks_ != 0 && now - lastDangerTicks_ < kCombatMusicDuration;
+    fs_eng::MusicManager::MusicSong song = g_MusicMgr.currentSong();
+    if (combat && song == fs_eng::MusicManager::kMusicSongAssassinate) {
+        g_MusicMgr.playSong(fs_eng::MusicManager::kMusicSongDanger, true, true);
+    } else if (!combat && song == fs_eng::MusicManager::kMusicSongDanger) {
+        g_MusicMgr.playSong(fs_eng::MusicManager::kMusicSongAssassinate, true, true);
+    }
 }
 
 bool GameplayMenu::scrollView() {
@@ -665,6 +715,7 @@ int GameplayMenu::seeThroughLevel() {
 
 void GameplayMenu::renderMap() {
     map_renderer_.setSeeThroughLevel(seeThroughLevel());
+    map_renderer_.setViewSize(static_cast<int>(viewWidth()) + 1, static_cast<int>(viewHeight()) + 1);
     if (!pMapTexture_) {
         map_renderer_.render(displayOriginPt_);
         map_renderer_.drawWalkableOutline(displayOriginPt_);
@@ -714,6 +765,14 @@ Point2D GameplayMenu::unzoomPoint(Point2D point) {
             static_cast<int>(zoomOriginY_ + point.y / zoom_)};
 }
 
+double GameplayMenu::viewWidth() {
+    return MapRenderer::kGameplayPanelWidth + mapAreaWidth() / (std::min)(zoom_, 1.0);
+}
+
+double GameplayMenu::viewHeight() {
+    return fs_eng::kScreenHeight / (std::min)(zoom_, 1.0);
+}
+
 void GameplayMenu::handleMouseWheel(Point2D point, int delta) {
     if (!pMapTexture_ || escMenuShown_ || point.x < MapRenderer::kGameplayPanelWidth || delta == 0) {
         return;
@@ -722,13 +781,28 @@ void GameplayMenu::handleMouseWheel(Point2D point, int delta) {
     // The point of the map under the mouse stays under the mouse
     Point2D mapPoint = unzoomPoint(point);
     double newZoom = delta > 0 ? zoom_ * kZoomStep : zoom_ / kZoomStep;
-    zoom_ = std::clamp(newZoom, 1.0, kMaxZoom);
+    double oldViewWidth = viewWidth(), oldViewHeight = viewHeight();
+    zoom_ = std::clamp(newZoom, kMinZoom, kMaxZoom);
 
-    double viewWidth = mapAreaWidth() / zoom_;
-    double viewHeight = fs_eng::kScreenHeight / zoom_;
-    zoomOriginX_ = std::clamp(mapPoint.x - (point.x - MapRenderer::kGameplayPanelWidth) / zoom_,
-        (double) MapRenderer::kGameplayPanelWidth, g_System.screenWidth() - viewWidth);
-    zoomOriginY_ = std::clamp(mapPoint.y - point.y / zoom_, 0.0, fs_eng::kScreenHeight - viewHeight);
+    if (zoom_ <= 1.0) {
+        // Zoomed out, the whole map texture is shown : the map is moved in it so the
+        // point under the mouse stays under the mouse
+        int dx = static_cast<int>((point.x - MapRenderer::kGameplayPanelWidth) * (viewWidth() - oldViewWidth) /
+                                  (mapAreaWidth()));
+        int dy = static_cast<int>(point.y * (viewHeight() - oldViewHeight) / fs_eng::kScreenHeight);
+        if (oldViewWidth != viewWidth()) {
+            displayOriginPt_.x -= dx;
+            displayOriginPt_.y -= dy;
+        }
+        zoomOriginX_ = MapRenderer::kGameplayPanelWidth;
+        zoomOriginY_ = 0;
+    } else {
+        double viewWidth = mapAreaWidth() / zoom_;
+        double viewHeight = fs_eng::kScreenHeight / zoom_;
+        zoomOriginX_ = std::clamp(mapPoint.x - (point.x - MapRenderer::kGameplayPanelWidth) / zoom_,
+            (double) MapRenderer::kGameplayPanelWidth, g_System.screenWidth() - viewWidth);
+        zoomOriginY_ = std::clamp(mapPoint.y - point.y / zoom_, 0.0, fs_eng::kScreenHeight - viewHeight);
+    }
 
     // Update the target under the mouse
     handleMouseMotion(point, 0);
@@ -1311,14 +1385,9 @@ bool GameplayMenu::handleUnMappedKey(const fs_eng::FS_Key key) {
     }
     else if (key.keyCode == fs_eng::kKeyCode_4) {
         handleAgentKey(3, ctrl);
-    } else if (key.keyCode == fs_eng::kKeyCode_Left) { // Scroll the map to the left
-        scroll_x_ = -SCROLL_STEP;
-    } else if (key.keyCode == fs_eng::kKeyCode_Right) { // Scroll the map to the right
-        scroll_x_ = SCROLL_STEP;
-    } else if (key.keyCode == fs_eng::kKeyCode_Up) { // Scroll the map to the top
-        scroll_y_ = -SCROLL_STEP;
-    } else if (key.keyCode == fs_eng::kKeyCode_Down) { // Scroll the map to the bottom
-        scroll_y_ = SCROLL_STEP;
+    } else if (key.keyCode == fs_eng::kKeyCode_Left || key.keyCode == fs_eng::kKeyCode_Right ||
+               key.keyCode == fs_eng::kKeyCode_Up || key.keyCode == fs_eng::kKeyCode_Down) {
+        // The map is scrolled while the keys are held down (see scrollView())
     }
 
 #ifdef _DEBUG
@@ -1557,15 +1626,24 @@ void GameplayMenu::drawMissionHint() {
     gameFont()->drawText(x, 46 + 44 + 10 + 46 + 44 + 2 - 1, hint_, aColor);
 }
 
-//! Size of the Escape menu : it's in the middle of the map area (see escMenuPos())
-const int kEscMenuWidth = 300;
-const int kEscMenuY = 110;
-
-static Point2D escMenuPos() {
-    return {MapRenderer::kGameplayPanelWidth + (mapAreaWidth() - kEscMenuWidth) / 2, kEscMenuY};
-}
-const int kEscMenuItemsY = 40;
-const int kEscMenuItemHeight = 26;
+/*!
+ * The Escape menu is a see-through green panel with a green border, like the menus of
+ * the game, over the paused mission : a big title, then the items with their values in
+ * two columns, centred on the screen.
+ */
+const int kEscMenuPanelY = 8;
+const int kEscMenuPanelHeight = 384;
+const int kEscMenuTitleY = 20;
+const int kEscMenuItemsY = 78;
+const int kEscMenuItemHeight = 29;
+//! Background of the panel (see-through) and of the item under the mouse
+const fs_eng::FSColor kEscMenuBackground = {0, 48, 8, 190};
+const fs_eng::FSColor kEscMenuHoverBackground = {40, 120, 30, 110};
+//! Half of the width of the items : labels on the left, values on the right of the centre
+const int kEscMenuHalfWidth = 230;
+const int kEscMenuValueX = 70;
+//! Volumes are changed by this percentage
+const int kVolumeStep = 10;
 //! Software mode : names for the palettes that can be chosen as time of day (0 = the palette of the mission)
 const char *kPaletteNames[] = {"MISSION", "DAY AMBER", "NIGHT", "DAY GREEN", "DUSK RED", "DUSK SAND"};
 const int kNbPalettes = 6;
@@ -1616,41 +1694,104 @@ void GameplayMenu::showEscMenu(bool show) {
     }
 }
 
-void GameplayMenu::drawEscMenu() {
-    const int kEscMenuHeight = kEscMenuItemsY + kEscMenuNbItems * kEscMenuItemHeight + 8;
-    g_System.drawFillRect(escMenuPos(), kEscMenuWidth, kEscMenuHeight, menu_manager_->kMenuColorBlack);
-    g_System.drawRect(escMenuPos(), kEscMenuWidth, kEscMenuHeight, menu_manager_->kMenuColorDarkGreen);
-    g_System.drawRect({escMenuPos().x + 1, escMenuPos().y + 1}, kEscMenuWidth - 2, kEscMenuHeight - 2, menu_manager_->kMenuColorDarkGreen);
-
-    fs_eng::MenuFont *pFont = getMenuFont(fs_eng::FontManager::SIZE_2);
-    std::string title = getMessage("GAME_PAUSED");
-    pFont->drawText(escMenuPos().x + (kEscMenuWidth - pFont->textWidth(title)) / 2, escMenuPos().y + 10, title, true);
-
-    std::string items[kEscMenuNbItems] = {
-        "RESUME",
-        std::string("TIME OF DAY  ") + (pMapTexture_ ? kTimesOfDay[g_Ctx.getTimeOfDay()].name : kPaletteNames[g_Ctx.getMissionPalette()]),
-        std::string("FULLSCREEN  ") + (g_System.isFullScreen() ? "ON" : "OFF"),
-        // Lighting only exists in hardware mode
-        pMapTexture_ ? std::string("LIGHTING  ") + (g_Ctx.isLightingEnabled() ? "ON" : "OFF") : std::string(""),
-        pMapTexture_ ? std::string("LIGHT EDITOR") : std::string(""),
-        "ABORT MISSION"
-    };
-    for (int i = 0; i < kEscMenuNbItems; i++) {
-        int y = escMenuPos().y + kEscMenuItemsY + i * kEscMenuItemHeight;
-        pFont->drawText(escMenuPos().x + (kEscMenuWidth - pFont->textWidth(items[i])) / 2, y, items[i], i == escMenuHover_);
+std::vector<int> GameplayMenu::escMenuItems() {
+    std::vector<int> items = {kEscMenuResume, kEscMenuTimeOfDay, kEscMenuFullScreen};
+    // Lighting only exists in hardware mode
+    if (pMapTexture_) {
+        items.push_back(kEscMenuLighting);
+        items.push_back(kEscMenuLightEditor);
     }
+    items.insert(items.end(), {kEscMenuSound, kEscMenuMusic, kEscMenuRecord, kEscMenuAbort});
+    return items;
+}
+
+//! Returns a volume as a percentage, or OFF without sound
+static std::string volumeText(int volume) {
+    fs_eng::Audio *pAudio = g_System.getAudio();
+    if (pAudio == nullptr || !pAudio->isInitialized()) {
+        return "OFF";
+    }
+    return std::to_string((volume * 100 + pAudio->getMaxVolume() / 2) / pAudio->getMaxVolume()) + "%";
+}
+
+//! Returns the volume after a step up or down, going round at the ends
+static int nextVolume(int volume, bool down) {
+    fs_eng::Audio *pAudio = g_System.getAudio();
+    int max = pAudio->getMaxVolume();
+    int percent = (volume * 100 + max / 2) / max;
+    percent = down ? percent - kVolumeStep : percent + kVolumeStep;
+    if (percent > 100) {
+        percent = 0;
+    } else if (percent < 0) {
+        percent = 100;
+    }
+    return percent * max / 100;
+}
+
+void GameplayMenu::drawEscMenu() {
+    int centreX = g_System.screenWidth() / 2;
+    // A green panel, darker than the game behind it, with a double green border
+    Point2D panel = {centreX - kEscMenuHalfWidth - 24, kEscMenuPanelY};
+    int panelWidth = 2 * kEscMenuHalfWidth + 48;
+    g_System.drawBlendedRect(panel, panelWidth, kEscMenuPanelHeight, kEscMenuBackground);
+    g_System.drawRect(panel, panelWidth, kEscMenuPanelHeight, menu_manager_->kMenuColorLightGreen);
+    g_System.drawRect(panel.add(3, 3), panelWidth - 6, kEscMenuPanelHeight - 6, menu_manager_->kMenuColorDarkGreen);
+
+    fs_eng::MenuFont *pTitleFont = getMenuFont(fs_eng::FontManager::SIZE_4);
+    std::string title = getMessage("GAME_PAUSED");
+    pTitleFont->drawText(centreX - pTitleFont->textWidth(title) / 2, kEscMenuTitleY, title, false);
+
+    fs_eng::MenuFont *pFont = getMenuFont(fs_eng::FontManager::SIZE_3);
+    std::vector<int> items = escMenuItems();
+    for (size_t i = 0; i < items.size(); i++) {
+        std::string label, value;
+        switch (items[i]) {
+        case kEscMenuResume: label = "RESUME"; break;
+        case kEscMenuTimeOfDay:
+            label = "TIME OF DAY";
+            value = pMapTexture_ ? kTimesOfDay[g_Ctx.getTimeOfDay()].name : kPaletteNames[g_Ctx.getMissionPalette()];
+            break;
+        case kEscMenuFullScreen: label = "FULLSCREEN"; value = g_System.isFullScreen() ? "ON" : "OFF"; break;
+        case kEscMenuLighting: label = "LIGHTING"; value = g_Ctx.isLightingEnabled() ? "ON" : "OFF"; break;
+        case kEscMenuLightEditor: label = "LIGHT EDITOR"; break;
+        case kEscMenuSound: label = "SOUND"; value = volumeText(g_SoundMgr.getVolume()); break;
+        case kEscMenuMusic: label = "MUSIC"; value = volumeText(g_MusicMgr.getVolume()); break;
+        case kEscMenuRecord:
+            label = "RECORD VIDEO";
+            value = g_Recorder.isRecording() ? "ON" : (recordFailed_ ? "NO FFMPEG" : "OFF");
+            break;
+        case kEscMenuAbort: label = "ABORT MISSION"; break;
+        default: break;
+        }
+        int y = kEscMenuItemsY + static_cast<int>(i) * kEscMenuItemHeight;
+        bool lighted = items[i] == escMenuHover_;
+        if (lighted) {
+            g_System.drawBlendedRect({centreX - kEscMenuHalfWidth - 12, y - 5}, 2 * kEscMenuHalfWidth + 24,
+                                     kEscMenuItemHeight - 2, kEscMenuHoverBackground);
+        }
+        pFont->drawText(centreX - kEscMenuHalfWidth, y, label, lighted);
+        if (!value.empty()) {
+            pFont->drawText(centreX + kEscMenuValueX, y, value, lighted);
+        }
+    }
+
+    fs_eng::MenuFont *pHintFont = getMenuFont(fs_eng::FontManager::SIZE_1);
+    std::string hint = "LEFT CLICK NEXT   RIGHT CLICK PREVIOUS   F12 RECORD";
+    pHintFont->drawText(centreX - pHintFont->textWidth(hint) / 2, kEscMenuPanelY + kEscMenuPanelHeight - 20, hint, false);
 }
 
 int GameplayMenu::escMenuItemAt(Point2D point) {
-    if (point.x < escMenuPos().x || point.x >= escMenuPos().x + kEscMenuWidth) {
+    int centreX = g_System.screenWidth() / 2;
+    if (point.x < centreX - kEscMenuHalfWidth - 10 || point.x >= centreX + kEscMenuHalfWidth + 10) {
         return -1;
     }
-    int dy = point.y - (escMenuPos().y + kEscMenuItemsY);
+    int dy = point.y - kEscMenuItemsY;
     if (dy < 0) {
         return -1;
     }
-    int item = dy / kEscMenuItemHeight;
-    return item < kEscMenuNbItems ? item : -1;
+    std::vector<int> items = escMenuItems();
+    size_t row = dy / kEscMenuItemHeight;
+    return row < items.size() ? items[row] : -1;
 }
 
 void GameplayMenu::handleEscMenuClick(int item, int button) {
@@ -1686,6 +1827,27 @@ void GameplayMenu::handleEscMenuClick(int item, int button) {
     case kEscMenuLightEditor:
         if (pMapTexture_) {
             openLightEditor();
+        }
+        break;
+    case kEscMenuSound:
+        if (g_System.getAudio() && g_System.getAudio()->isInitialized()) {
+            g_SoundMgr.setVolume(nextVolume(g_SoundMgr.getVolume(), button == kMouseRightButton));
+            g_Ctx.updateSoundVolume(g_SoundMgr.getVolume());
+            // A sound to hear the new volume
+            g_SoundMgr.play(fs_eng::PISTOL);
+        }
+        break;
+    case kEscMenuMusic:
+        if (g_System.getAudio() && g_System.getAudio()->isInitialized()) {
+            g_MusicMgr.setVolume(nextVolume(g_MusicMgr.getVolume(), button == kMouseRightButton));
+            g_Ctx.updateMusicVolume(g_MusicMgr.getVolume());
+        }
+        break;
+    case kEscMenuRecord:
+        {
+            // When it doesn't start, ffmpeg is missing
+            bool wasRecording = g_Recorder.isRecording();
+            recordFailed_ = !g_System.toggleRecording() && !wasRecording;
         }
         break;
     case kEscMenuAbort:

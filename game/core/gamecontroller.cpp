@@ -89,6 +89,7 @@ bool GameController::reset() {
  * - TO THE TOP : Puts $100 000 000 in funds and activates all missions
  * - COOPER TEAM : $100 000 000 in funds, select any mission, all weapons
  *   and mods
+ * - MINIGUN SQUAD : All weapons and mods, the best mods and miniguns for all agents
  * - WATCH THE CLOCK : Accelerates time
  *
  * \param name The name of a cheat code.
@@ -125,6 +126,12 @@ void GameController::setCheatCode(const char *name) {
         cheatWeaponsAndMods();
         cheatEquipAllMods();
         cheatEquipFancyWeapons();
+    }
+    else if (!strcmp(name, "MINIGUN SQUAD")) {
+        // All mods at their best version and miniguns in every weapon slot
+        cheatWeaponsAndMods();
+        cheatEquipAllMods();
+        cheatEquipMiniguns();
     }
     else if (!strcmp(name, "WATCH THE CLOCK")) {
         // Accelerate time for faster research completion
@@ -507,6 +514,18 @@ void GameController::cheatFemaleRecruits() {
 
     for (uint8_t i = 0; i < fs_knl::Squad::kMaxSlot; i++)
         agents().setSquadMember(i, agents().agent(i));
+}
+
+void GameController::cheatEquipMiniguns() {
+    for (uint8_t i = 0; i < fs_knl::AgentManager::MAX_AGENT; i++) {
+        fs_knl::Agent *pAgent = agents().agent(i);
+        if (pAgent) {
+            pAgent->destroyAllWeapons();
+            for (uint8_t slot = 0; slot < fs_knl::WeaponHolder::kMaxHoldedWeapons; slot++) {
+                pAgent->addWeapon(fs_knl::WeaponInstance::createInstance(weaponManager().getWeapon(fs_knl::Weapon::Minigun)));
+            }
+        }
+    }
 }
 
 void GameController::cheatEquipFancyWeapons() {

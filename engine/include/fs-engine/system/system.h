@@ -168,6 +168,8 @@ public:
      * @param color Color to fill the rectangle
      */
     virtual void drawFillRect(Point2D pos, int width, int height, fs_eng::FSColor color) = 0;
+    //! Draws a rectangle blended with what is under it, with the alpha of the colour
+    virtual void drawBlendedRect(Point2D pos, int width, int height, fs_eng::FSColor color) = 0;
     /*!
      * Draws a filled convex polygon, blended with what is already drawn using
      * the alpha of the given color.
@@ -199,6 +201,12 @@ public:
 
     //! Return a pointer to the Audio system instance
     fs_eng::Audio* getAudio() {return audio_.get();}
+
+    /*!
+     * Starts or stops recording the game in a video, saved in the folder "recordings"
+     * next to the user configuration. Returns true if a recording is running.
+     */
+    bool toggleRecording();
 
     //! Create a FSTexture with the current system
     virtual std::unique_ptr<FSTexture> createTexture() = 0;

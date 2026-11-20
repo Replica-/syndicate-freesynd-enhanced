@@ -20,6 +20,9 @@
 
 #include "sdlmixeraudio.h"
 
+#include <map>
+#include <string>
+
 #include <SDL.h>
 #include <SDL_mixer.h>
 #include "adlmidi.h"
@@ -47,6 +50,21 @@ static struct ADL_MIDIPlayer    *pMidiPlayer = NULL;
  * same time (the tracks of a song are changed while they're being played).
  */
 static SDL_mutex *pMidiMutex = NULL;
+/*!
+ * Music files (mp3, ogg...) replacing songs of the game, by path : they're played by
+ * SDL_Mixer's own music player while the MIDI hook is removed.
+ */
+static std::map<std::string, Mix_Music *> musicFiles;
+//! The music file being played or null when the MIDI player has the music
+static Mix_Music *pCurrentMusicFile = nullptr;
+//! Receives the final mix of the audio while it's captured (see startCapture())
+static std::function<void(const uint8_t *, int)> captureFunction;
+
+static void captureCallback([[maybe_unused]] void *udata, Uint8 *stream, int len) {
+    if (captureFunction) {
+        captureFunction(stream, len);
+    }
+}
 
 /**
  * This is the audio callback function that SDL_Mixer will call when playing the music.
@@ -241,6 +259,11 @@ void SdlMixerAudio::initObtainedAudioFormat() {
 bool SdlMixerAudio::quit(void) {
     if (Mix_QuerySpec(0, 0, 0) > 0) {
         Mix_HaltMusic();
+        pCurrentMusicFile = nullptr;
+        for (auto &[path, pMusic] : musicFiles) {
+            Mix_FreeMusic(pMusic);
+        }
+        musicFiles.clear();
         Mix_HaltChannel(-1);
         Mix_CloseAudio();
         SDL_LockMutex(pMidiMutex);
@@ -346,6 +369,7 @@ bool SdlMixerAudio::openFile(std::string path) {
  * @param loop True to play the sing indefinitly
  */
 void SdlMixerAudio::playMusic(int songNb, bool loop) {
+    stopMusicFile();
     pauseMusic();
     // We use the loop marker that are in the file
     SDL_LockMutex(pMidiMutex);
@@ -376,7 +400,89 @@ void SdlMixerAudio::resumeMusic() {
  */
 void SdlMixerAudio::stopMusic() {
     is_playing = 0;
-    //Mix_HaltMusic();
+    if (pCurrentMusicFile) {
+        Mix_HaltMusic();
+    }
+}
+
+bool SdlMixerAudio::playMusicFile(const std::string &path, bool loop, double position, int fadeInMs) {
+    if (!initialized_) {
+        return false;
+    }
+    Mix_Music *pMusic;
+    auto it = musicFiles.find(path);
+    if (it != musicFiles.end()) {
+        pMusic = it->second;
+    } else {
+        // The file is streamed : loading it is quick
+        pMusic = Mix_LoadMUS(path.c_str());
+        if (pMusic == nullptr) {
+            FSERR(Log::k_FLG_SND, "SdlMixerAudio", "playMusicFile", ("Couldn't load music file %s: %s", path.c_str(), Mix_GetError()));
+            return false;
+        }
+        musicFiles[path] = pMusic;
+    }
+
+    if (!pCurrentMusicFile) {
+        // The MIDI player stops : SDL_Mixer plays the music again
+        SDL_LockMutex(pMidiMutex);
+        is_playing = 0;
+        Mix_HookMusic(NULL, NULL);
+        SDL_UnlockMutex(pMidiMutex);
+    }
+    pCurrentMusicFile = pMusic;
+    if (Mix_FadeInMusicPos(pMusic, loop ? -1 : 1, fadeInMs, position) < 0) {
+        FSERR(Log::k_FLG_SND, "SdlMixerAudio", "playMusicFile", ("Couldn't play music file %s: %s", path.c_str(), Mix_GetError()));
+        stopMusicFile();
+        return false;
+    }
+    LOG(Log::k_FLG_SND, "SdlMixerAudio", "playMusicFile", ("Playing music file %s from %.1f s", path.c_str(), position))
+    return true;
+}
+
+double SdlMixerAudio::musicFilePosition() {
+    if (!pCurrentMusicFile) {
+        return 0.0;
+    }
+    double position = Mix_GetMusicPosition(pCurrentMusicFile);
+    return position > 0.0 ? position : 0.0;
+}
+
+bool SdlMixerAudio::startCapture(std::function<void(const uint8_t *, int)> onSamples, int *pFrequency, int *pChannels,
+                                 std::string *pFormat) {
+    Uint16 format;
+    if (!initialized_ || Mix_QuerySpec(pFrequency, &format, pChannels) == 0) {
+        return false;
+    }
+    switch (format) {
+    case AUDIO_S16LSB: *pFormat = "s16le"; break;
+    case AUDIO_S16MSB: *pFormat = "s16be"; break;
+    case AUDIO_S32LSB: *pFormat = "s32le"; break;
+    case AUDIO_F32LSB: *pFormat = "f32le"; break;
+    case AUDIO_U8: *pFormat = "u8"; break;
+    case AUDIO_S8: *pFormat = "s8"; break;
+    default:
+        return false;
+    }
+    // Mix_SetPostMix() locks the audio : the function isn't used by the audio thread
+    // before it's set, nor after the callback is removed
+    captureFunction = onSamples;
+    Mix_SetPostMix(captureCallback, nullptr);
+    return true;
+}
+
+void SdlMixerAudio::stopCapture() {
+    Mix_SetPostMix(nullptr, nullptr);
+    captureFunction = nullptr;
+}
+
+void SdlMixerAudio::stopMusicFile() {
+    if (pCurrentMusicFile) {
+        Mix_HaltMusic();
+        pCurrentMusicFile = nullptr;
+        // The MIDI player has the music again
+        Mix_HookMusic(fs_audio_callback, pMidiPlayer);
+    }
 }
 
 }

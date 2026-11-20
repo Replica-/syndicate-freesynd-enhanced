@@ -38,6 +38,7 @@
 #include "fs-engine/config.h"
 #include "fs-engine/appcontext.h"
 #include "fs-engine/sound/audio.h"
+#include "fs-engine/system/recorder.h"
 #include "fs-utils/io/file.h"
 #include "fs-utils/log/log.h"
 #include "fstexture_sdl.h"
@@ -232,6 +233,31 @@ void SystemSDL::updateScreen() {
         update_cursor_ = false;
     }
 
+    // The frame goes in the video being recorded, then a red dot shows the recording
+    Recorder *pRecorder = Recorder::singletonPtr();
+    if (pRecorder && pRecorder->isRecording()) {
+        uint32_t ticks = getTicks();
+        int width, height;
+        if (pRecorder->needsFrame(ticks) && SDL_GetRendererOutputSize(pRenderer_, &width, &height) == 0) {
+            // The whole window is read : without the logical size, the viewport is the window
+            int logicalWidth, logicalHeight;
+            SDL_Rect viewport;
+            SDL_RenderGetLogicalSize(pRenderer_, &logicalWidth, &logicalHeight);
+            SDL_RenderGetViewport(pRenderer_, &viewport);
+            SDL_RenderSetLogicalSize(pRenderer_, 0, 0);
+            recordPixels_.resize(static_cast<size_t>(width) * height * 4);
+            bool read = SDL_RenderReadPixels(pRenderer_, nullptr, SDL_PIXELFORMAT_RGBA32, recordPixels_.data(), width * 4) == 0;
+            SDL_RenderSetLogicalSize(pRenderer_, logicalWidth, logicalHeight);
+            SDL_RenderSetViewport(pRenderer_, &viewport);
+            if (read) {
+                pRecorder->addFrame(recordPixels_.data(), width, height, ticks);
+            }
+        }
+        if (pRecorder->isRecording() && (ticks / 500) % 2 == 0) {
+            drawFillRect({screenWidth() - 12, 4}, 7, 7, {230, 20, 20, 255});
+        }
+    }
+
     // Flip screen
     SDL_RenderPresent( pRenderer_ );
 }
@@ -393,6 +419,12 @@ bool SystemSDL::pumpEvents(FS_Event &evtOut) {
                     }
                     fillKeyEvent(evtIn.key.keysym, evtOut);
                     break;
+                case SDLK_F12:
+                    // F12 starts or stops recording a video, on every screen
+                    if (!evtIn.key.repeat) {
+                        toggleRecording();
+                    }
+                    break;
                 default:
                     // We pass the event only if it's not a allowed modifier key
                     // Plus, the application receives event only when key is pressed
@@ -524,6 +556,22 @@ void SystemSDL::setFullScreen(bool fullscreen) {
         SDL_SetWindowPosition(pWindow_, SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED);
     }
     updateScreenWidth();
+}
+
+/*!
+ * The state of the modifier keys comes from SDL : it's right even when a key was released
+ * while the window didn't have the focus (Alt+Tab), which the key events don't tell.
+ */
+bool SystemSDL::isKeyModStatePressed(const int keyMod) {
+    SDL_Keymod sdlMod = SDL_GetModState();
+    int state = 0;
+    if (sdlMod & KMOD_LSHIFT) state |= KMD_LSHIFT;
+    if (sdlMod & KMOD_RSHIFT) state |= KMD_RSHIFT;
+    if (sdlMod & KMOD_LCTRL) state |= KMD_LCTRL;
+    if (sdlMod & KMOD_RCTRL) state |= KMD_RCTRL;
+    if (sdlMod & KMOD_LALT) state |= KMD_LALT;
+    if (sdlMod & KMOD_RALT) state |= KMD_RALT;
+    return (state & keyMod) != 0;
 }
 
 bool SystemSDL::isKeyDown(FS_KeyCode key) {
@@ -701,6 +749,14 @@ void SystemSDL::drawFillRect(Point2D pos, int width, int height, fs_eng::FSColor
     SDL_Rect outlineRect = { pos.x, pos.y, width, height};
     SDL_SetRenderDrawColor( pRenderer_, color.r, color.g, color.b, color.a );
     SDL_RenderFillRect( pRenderer_, &outlineRect );
+}
+
+void SystemSDL::drawBlendedRect(Point2D pos, int width, int height, fs_eng::FSColor color) {
+    SDL_Rect rect = {pos.x, pos.y, width, height};
+    SDL_SetRenderDrawColor(pRenderer_, color.r, color.g, color.b, color.a);
+    SDL_SetRenderDrawBlendMode(pRenderer_, SDL_BLENDMODE_BLEND);
+    SDL_RenderFillRect(pRenderer_, &rect);
+    SDL_SetRenderDrawBlendMode(pRenderer_, SDL_BLENDMODE_NONE);
 }
 
 void SystemSDL::drawFillPolygon(const Point2D *points, int nbPoints, fs_eng::FSColor color) {

@@ -23,6 +23,8 @@
 #include <memory>
 
 #include "sdl/system_sdl.h"
+#include "fs-utils/io/file.h"
+#include "fs-engine/system/recorder.h"
 
 namespace fs_eng {
 
@@ -32,5 +34,19 @@ std::unique_ptr<System> System::createSystem() {
 #else
 #error A suitable System object has not been defined!
 #endif
+}
+
+bool System::toggleRecording() {
+    Recorder *pRecorder = Recorder::singletonPtr();
+    if (pRecorder == nullptr) {
+        return false;
+    }
+    if (pRecorder->isRecording()) {
+        pRecorder->stop();
+        return false;
+    }
+    fs::path userConf;
+    fs_utl::File::getUserConfFullPath(userConf);
+    return pRecorder->start((userConf.parent_path() / "recordings").string(), getAudio());
 }
 }
